@@ -122,7 +122,7 @@ type EnrollmentHandler struct {
 func (h *EnrollmentHandler) CreateEnrollment(w http.ResponseWriter, r *http.Request) {
 	var enrollment Enrollment
 	if err := json.NewDecoder(r.Body).Decode(&enrollment); err != nil {
-		http.Error(w, fmt.Sprintf(`{"error": "Invalid request body: %s"}`, err.Error()), http.StatusBadRequest)
+		http.Error(w, `{"error": "Invalid request format"}`, http.StatusBadRequest)
 		return
 	}
 	
@@ -167,7 +167,7 @@ func (h *EnrollmentHandler) UpdateEnrollment(w http.ResponseWriter, r *http.Requ
 	
 	var enrollment Enrollment
 	if err := json.NewDecoder(r.Body).Decode(&enrollment); err != nil {
-		http.Error(w, fmt.Sprintf(`{"error": "Invalid request body: %s"}`, err.Error()), http.StatusBadRequest)
+		http.Error(w, `{"error": "Invalid request format"}`, http.StatusBadRequest)
 		return
 	}
 	
