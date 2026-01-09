@@ -156,10 +156,16 @@ func (r *EnrollmentRepository) Update(id int, input EnrollmentInput) (*Enrollmen
 	}
 
 	// Update fields if provided
-	if input.StudentID > 0 {
+	if input.StudentID != 0 {
+		if input.StudentID <= 0 {
+			return nil, fmt.Errorf("student_id must be a positive integer")
+		}
 		enrollment.StudentID = input.StudentID
 	}
-	if input.CourseID > 0 {
+	if input.CourseID != 0 {
+		if input.CourseID <= 0 {
+			return nil, fmt.Errorf("course_id must be a positive integer")
+		}
 		enrollment.CourseID = input.CourseID
 	}
 	if input.EnrollmentDate != "" {
@@ -291,7 +297,9 @@ func (h *EnrollmentHandler) DeleteEnrollment(w http.ResponseWriter, r *http.Requ
 func respondJSON(w http.ResponseWriter, data interface{}, statusCode int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(data)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		log.Printf("Error encoding JSON response: %v", err)
+	}
 }
 
 func respondError(w http.ResponseWriter, message string, statusCode int) {
