@@ -27,8 +27,8 @@ type CreateGradeRequest struct {
 
 // UpdateGradeRequest represents the request body for updating a grade
 type UpdateGradeRequest struct {
-	Grade        string  `json:"grade,omitempty"`
-	Score        float64 `json:"score,omitempty"`
-	Semester     string  `json:"semester,omitempty"`
-	AcademicYear string  `json:"academic_year,omitempty"`
+	Grade        *string  `json:"grade,omitempty"`
+	Score        *float64 `json:"score,omitempty"`
+	Semester     *string  `json:"semester,omitempty"`
+	AcademicYear *string  `json:"academic_year,omitempty"`
 }

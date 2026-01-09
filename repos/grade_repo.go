@@ -16,7 +16,7 @@ type GradeRepository interface {
 	GetAll() ([]*models.Grade, error)
 	GetByStudentID(studentID string) ([]*models.Grade, error)
 	GetByCourseID(courseID string) ([]*models.Grade, error)
-	Update(id string, grade *models.Grade) error
+	Update(id string, updateReq *models.UpdateGradeRequest) error
 	Delete(id string) error
 }
 
@@ -101,7 +101,7 @@ func (r *InMemoryGradeRepository) GetByCourseID(courseID string) ([]*models.Grad
 }
 
 // Update modifies an existing grade
-func (r *InMemoryGradeRepository) Update(id string, updatedGrade *models.Grade) error {
+func (r *InMemoryGradeRepository) Update(id string, updateReq *models.UpdateGradeRequest) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -110,18 +110,18 @@ func (r *InMemoryGradeRepository) Update(id string, updatedGrade *models.Grade) 
 		return errors.New("grade not found")
 	}
 
-	// Update fields
-	if updatedGrade.Grade != "" {
-		grade.Grade = updatedGrade.Grade
+	// Update fields only if they are provided (not nil)
+	if updateReq.Grade != nil {
+		grade.Grade = *updateReq.Grade
 	}
-	if updatedGrade.Score != 0 {
-		grade.Score = updatedGrade.Score
+	if updateReq.Score != nil {
+		grade.Score = *updateReq.Score
 	}
-	if updatedGrade.Semester != "" {
-		grade.Semester = updatedGrade.Semester
+	if updateReq.Semester != nil {
+		grade.Semester = *updateReq.Semester
 	}
-	if updatedGrade.AcademicYear != "" {
-		grade.AcademicYear = updatedGrade.AcademicYear
+	if updateReq.AcademicYear != nil {
+		grade.AcademicYear = *updateReq.AcademicYear
 	}
 	grade.UpdatedAt = time.Now()
 

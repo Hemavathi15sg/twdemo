@@ -122,14 +122,7 @@ func (h *GradeHandler) UpdateGrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updatedGrade := &models.Grade{
-		Grade:        req.Grade,
-		Score:        req.Score,
-		Semester:     req.Semester,
-		AcademicYear: req.AcademicYear,
-	}
-
-	if err := h.repo.Update(id, updatedGrade); err != nil {
+	if err := h.repo.Update(id, &req); err != nil {
 		http.Error(w, "Grade not found", http.StatusNotFound)
 		return
 	}
