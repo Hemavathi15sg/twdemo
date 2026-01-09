@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"grademanagement-demo/routes"
 	"log"
 	"net/http"
 
@@ -17,9 +18,13 @@ func main() {
 		fmt.Fprintf(w, `{"message": "Grade Management API - Ready for AI delegation!", "status": "healthy"}`)
 	}).Methods("GET")
 
+	// Setup enrollment routes with /api prefix
+	routes.SetupEnrollmentRoutes(r)
+
 	port := ":8080"
 	fmt.Printf("🚀 Grade Management API starting on port %s\n", port)
 	fmt.Println("📋 Ready for Copilot Agent delegation!")
+	fmt.Println("📚 Enrollment API available at /api/enrollments")
 	
 	log.Fatal(http.ListenAndServe(port, r))
 }
