@@ -19,7 +19,7 @@ func main() {
 
 	port := ":8080"
 	fmt.Printf("🚀 Grade Management API starting on port %s\n", port)
-	fmt.Println("📋 Ready for Copilot Agent delegation!")
+	fmt.Println("Ready for Copilot Agent delegation!")
 	
 	log.Fatal(http.ListenAndServe(port, r))
 }
