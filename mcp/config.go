@@ -30,6 +30,9 @@ func LoadConfigFromEnv() (Config, error) {
 		if err != nil {
 			return Config{}, fmt.Errorf("invalid MCP_TIMEOUT value: %w", err)
 		}
+		if timeoutSec <= 0 {
+			return Config{}, fmt.Errorf("MCP_TIMEOUT must be positive, got: %d", timeoutSec)
+		}
 		config.Timeout = time.Duration(timeoutSec) * time.Second
 	}
 
@@ -38,6 +41,9 @@ func LoadConfigFromEnv() (Config, error) {
 		retries, err := strconv.Atoi(retriesStr)
 		if err != nil {
 			return Config{}, fmt.Errorf("invalid MCP_MAX_RETRIES value: %w", err)
+		}
+		if retries < 0 {
+			return Config{}, fmt.Errorf("MCP_MAX_RETRIES cannot be negative, got: %d", retries)
 		}
 		config.MaxRetries = retries
 	}

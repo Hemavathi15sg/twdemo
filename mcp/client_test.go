@@ -3,6 +3,7 @@ package mcp
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 )
@@ -146,5 +147,39 @@ func TestLoadConfigFromEnv_Missing(t *testing.T) {
 	_, err := LoadConfigFromEnv()
 	if err == nil {
 		t.Error("Expected error when MCP_BASE_URL is not set")
+	}
+}
+
+func TestLoadConfigFromEnv_NegativeRetries(t *testing.T) {
+	// Set environment variables
+	os.Setenv("MCP_BASE_URL", "https://mcp.example.com")
+	os.Setenv("MCP_API_KEY", "test-key")
+	os.Setenv("MCP_MAX_RETRIES", "-1")
+	defer func() {
+		os.Unsetenv("MCP_BASE_URL")
+		os.Unsetenv("MCP_API_KEY")
+		os.Unsetenv("MCP_MAX_RETRIES")
+	}()
+
+	_, err := LoadConfigFromEnv()
+	if err == nil {
+		t.Error("Expected error when MCP_MAX_RETRIES is negative")
+	}
+}
+
+func TestLoadConfigFromEnv_ZeroTimeout(t *testing.T) {
+	// Set environment variables
+	os.Setenv("MCP_BASE_URL", "https://mcp.example.com")
+	os.Setenv("MCP_API_KEY", "test-key")
+	os.Setenv("MCP_TIMEOUT", "0")
+	defer func() {
+		os.Unsetenv("MCP_BASE_URL")
+		os.Unsetenv("MCP_API_KEY")
+		os.Unsetenv("MCP_TIMEOUT")
+	}()
+
+	_, err := LoadConfigFromEnv()
+	if err == nil {
+		t.Error("Expected error when MCP_TIMEOUT is zero")
 	}
 }
