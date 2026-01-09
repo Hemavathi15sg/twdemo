@@ -80,6 +80,7 @@ func (c *Client) doWithRetry(method, url string, jsonData []byte, operation stri
 		httpReq.Header.Set("X-Client-Version", ClientVersion)
 
 		resp, lastErr = c.httpClient.Do(httpReq)
+		// Retry on network errors (lastErr != nil) or server errors (5xx status codes)
 		if lastErr == nil && resp.StatusCode < 500 {
 			break
 		}
@@ -89,7 +90,7 @@ func (c *Client) doWithRetry(method, url string, jsonData []byte, operation stri
 		}
 
 		if attempt < c.config.MaxRetries {
-			// Exponential backoff: 2^attempt seconds (using bit shift for efficiency)
+			// Exponential backoff: 2, 4, 8 seconds for attempts 1, 2, 3
 			backoff := time.Duration(1<<uint(attempt)) * time.Second
 			if c.config.EnableLogging {
 				log.Printf("[MCP] Request failed, retrying after %v", backoff)
