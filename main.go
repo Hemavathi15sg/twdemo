@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"grademanagement-demo/mcp"
 )
 
 // Enrollment model with required fields
@@ -199,12 +200,16 @@ func (r *EnrollmentRepository) Delete(id int) error {
 
 // EnrollmentHandler handles HTTP requests for enrollments
 type EnrollmentHandler struct {
-	repo *EnrollmentRepository
+	repo      *EnrollmentRepository
+	mcpClient *mcp.Client
 }
 
 // NewEnrollmentHandler creates a new handler instance
-func NewEnrollmentHandler(repo *EnrollmentRepository) *EnrollmentHandler {
-	return &EnrollmentHandler{repo: repo}
+func NewEnrollmentHandler(repo *EnrollmentRepository, mcpClient *mcp.Client) *EnrollmentHandler {
+	return &EnrollmentHandler{
+		repo:      repo,
+		mcpClient: mcpClient,
+	}
 }
 
 // CreateEnrollment handles POST /api/enrollments
@@ -219,6 +224,23 @@ func (h *EnrollmentHandler) CreateEnrollment(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		respondError(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+
+	// Send enrollment to MCP if client is configured
+	if h.mcpClient != nil {
+		mcpReq := mcp.EnrollmentRequest{
+			StudentID:      enrollment.StudentID,
+			CourseID:       enrollment.CourseID,
+			EnrollmentDate: enrollment.EnrollmentDate,
+			Status:         enrollment.Status,
+		}
+
+		_, err := h.mcpClient.SendEnrollment(mcpReq)
+		if err != nil {
+			log.Printf("Warning: Failed to send enrollment to MCP: %v", err)
+			// Note: We don't fail the request if MCP is unavailable
+			// The enrollment is still created locally
+		}
 	}
 
 	respondJSON(w, enrollment, http.StatusCreated)
@@ -273,6 +295,15 @@ func (h *EnrollmentHandler) UpdateEnrollment(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// Notify MCP of status change if client is configured and status was updated
+	if h.mcpClient != nil && input.Status != "" {
+		err := h.mcpClient.UpdateEnrollmentStatus(enrollment.StudentID, enrollment.CourseID, enrollment.Status)
+		if err != nil {
+			log.Printf("Warning: Failed to update enrollment status in MCP: %v", err)
+			// Note: We don't fail the request if MCP is unavailable
+		}
+	}
+
 	respondJSON(w, enrollment, http.StatusOK)
 }
 
@@ -309,9 +340,27 @@ func respondError(w http.ResponseWriter, message string, statusCode int) {
 func main() {
 	r := mux.NewRouter()
 
+	// Initialize MCP client (optional - won't fail if not configured)
+	var mcpClient *mcp.Client
+	mcpConfig, err := mcp.LoadConfigFromEnv()
+	if err != nil {
+		log.Printf("MCP integration disabled: %v", err)
+		log.Println("To enable MCP integration, set MCP_BASE_URL and MCP_API_KEY environment variables")
+	} else {
+		mcpClient = mcp.NewClient(mcpConfig)
+		// Perform health check
+		if err := mcpClient.HealthCheck(); err != nil {
+			log.Printf("Warning: MCP health check failed: %v", err)
+			log.Println("Continuing without MCP integration")
+			mcpClient = nil
+		} else {
+			log.Println("✓ MCP connection established successfully")
+		}
+	}
+
 	// Initialize repository and handler
 	repo := NewEnrollmentRepository()
-	handler := NewEnrollmentHandler(repo)
+	handler := NewEnrollmentHandler(repo, mcpClient)
 
 	// API routes with /api prefix
 	api := r.PathPrefix("/api").Subrouter()
