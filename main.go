@@ -142,47 +142,52 @@ func (r *EnrollmentRepository) GetAll() []*Enrollment {
 }
 
 // Update modifies an existing enrollment
-func (r *EnrollmentRepository) Update(id int, input EnrollmentInput) (*Enrollment, error) {
+func (r *EnrollmentRepository) Update(id int, input EnrollmentInput) (*Enrollment, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	enrollment, exists := r.enrollments[id]
 	if !exists {
-		return nil, fmt.Errorf("enrollment not found")
+		return nil, false, fmt.Errorf("enrollment not found")
 	}
 
 	// Validate status if provided
 	if input.Status != "" && !ValidateStatus(input.Status) {
-		return nil, fmt.Errorf("invalid status: must be one of pending, active, or completed")
+		return nil, false, fmt.Errorf("invalid status: must be one of pending, active, or completed")
 	}
+
+	// Track if status changed
+	statusChanged := false
+	oldStatus := enrollment.Status
 
 	// Update fields if provided
 	if input.StudentID != 0 {
 		if input.StudentID <= 0 {
-			return nil, fmt.Errorf("student_id must be a positive integer")
+			return nil, false, fmt.Errorf("student_id must be a positive integer")
 		}
 		enrollment.StudentID = input.StudentID
 	}
 	if input.CourseID != 0 {
 		if input.CourseID <= 0 {
-			return nil, fmt.Errorf("course_id must be a positive integer")
+			return nil, false, fmt.Errorf("course_id must be a positive integer")
 		}
 		enrollment.CourseID = input.CourseID
 	}
 	if input.EnrollmentDate != "" {
 		enrollmentDate, err := time.Parse("2006-01-02", input.EnrollmentDate)
 		if err != nil {
-			return nil, fmt.Errorf("invalid enrollment_date format: use YYYY-MM-DD")
+			return nil, false, fmt.Errorf("invalid enrollment_date format: use YYYY-MM-DD")
 		}
 		enrollment.EnrollmentDate = enrollmentDate
 	}
 	if input.Status != "" {
 		enrollment.Status = input.Status
+		statusChanged = (oldStatus != input.Status)
 	}
 
 	enrollment.UpdatedAt = time.Now()
 
-	return enrollment, nil
+	return enrollment, statusChanged, nil
 }
 
 // Delete removes an enrollment
@@ -285,7 +290,7 @@ func (h *EnrollmentHandler) UpdateEnrollment(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	enrollment, err := h.repo.Update(id, input)
+	enrollment, statusChanged, err := h.repo.Update(id, input)
 	if err != nil {
 		if err.Error() == "enrollment not found" {
 			respondError(w, err.Error(), http.StatusNotFound)
@@ -295,8 +300,8 @@ func (h *EnrollmentHandler) UpdateEnrollment(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Notify MCP of status change if client is configured and status was updated
-	if h.mcpClient != nil && input.Status != "" {
+	// Notify MCP of status change if client is configured and status actually changed
+	if h.mcpClient != nil && statusChanged {
 		err := h.mcpClient.UpdateEnrollmentStatus(enrollment.StudentID, enrollment.CourseID, enrollment.Status)
 		if err != nil {
 			log.Printf("Warning: Failed to update enrollment status in MCP: %v", err)

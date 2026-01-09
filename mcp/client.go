@@ -70,15 +70,7 @@ func (c *Client) SendEnrollment(req EnrollmentRequest) (*EnrollmentResponse, err
 	}
 
 	url := fmt.Sprintf("%s/api/enrollments", c.config.BaseURL)
-	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.config.APIKey))
-	httpReq.Header.Set("X-Client-Version", "1.0.0")
-
+	
 	var resp *http.Response
 	var lastErr error
 
@@ -87,6 +79,16 @@ func (c *Client) SendEnrollment(req EnrollmentRequest) (*EnrollmentResponse, err
 		if c.config.EnableLogging {
 			log.Printf("[MCP] Attempt %d/%d to send enrollment", attempt, c.config.MaxRetries)
 		}
+
+		// Create a new request for each attempt to avoid body reuse issues
+		httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
+		}
+
+		httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.config.APIKey))
+		httpReq.Header.Set("X-Client-Version", "1.0.0")
 
 		resp, lastErr = c.httpClient.Do(httpReq)
 		if lastErr == nil && resp.StatusCode < 500 {
@@ -155,17 +157,45 @@ func (c *Client) UpdateEnrollmentStatus(studentID, courseID int, status string) 
 	}
 
 	url := fmt.Sprintf("%s/api/enrollments/status", c.config.BaseURL)
-	httpReq, err := http.NewRequest("PUT", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+	
+	var resp *http.Response
+	var lastErr error
+
+	// Retry logic
+	for attempt := 1; attempt <= c.config.MaxRetries; attempt++ {
+		if c.config.EnableLogging {
+			log.Printf("[MCP] Attempt %d/%d to update enrollment status", attempt, c.config.MaxRetries)
+		}
+
+		// Create a new request for each attempt to avoid body reuse issues
+		httpReq, err := http.NewRequest("PUT", url, bytes.NewBuffer(jsonData))
+		if err != nil {
+			return fmt.Errorf("failed to create request: %w", err)
+		}
+
+		httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.config.APIKey))
+
+		resp, lastErr = c.httpClient.Do(httpReq)
+		if lastErr == nil && resp.StatusCode < 500 {
+			break
+		}
+
+		if resp != nil {
+			resp.Body.Close()
+		}
+
+		if attempt < c.config.MaxRetries {
+			backoff := time.Duration(attempt) * time.Second
+			if c.config.EnableLogging {
+				log.Printf("[MCP] Request failed, retrying after %v", backoff)
+			}
+			time.Sleep(backoff)
+		}
 	}
 
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.config.APIKey))
-
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return fmt.Errorf("failed to send status update: %w", err)
+	if lastErr != nil {
+		return fmt.Errorf("failed to send status update after %d attempts: %w", c.config.MaxRetries, lastErr)
 	}
 	defer resp.Body.Close()
 
