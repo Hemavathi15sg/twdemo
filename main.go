@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"grademanagement-demo/mcp"
 )
 
 // Enrollment model with required fields
@@ -141,47 +142,52 @@ func (r *EnrollmentRepository) GetAll() []*Enrollment {
 }
 
 // Update modifies an existing enrollment
-func (r *EnrollmentRepository) Update(id int, input EnrollmentInput) (*Enrollment, error) {
+func (r *EnrollmentRepository) Update(id int, input EnrollmentInput) (*Enrollment, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	enrollment, exists := r.enrollments[id]
 	if !exists {
-		return nil, fmt.Errorf("enrollment not found")
+		return nil, false, fmt.Errorf("enrollment not found")
 	}
 
 	// Validate status if provided
 	if input.Status != "" && !ValidateStatus(input.Status) {
-		return nil, fmt.Errorf("invalid status: must be one of pending, active, or completed")
+		return nil, false, fmt.Errorf("invalid status: must be one of pending, active, or completed")
 	}
+
+	// Track if status changed
+	statusChanged := false
+	oldStatus := enrollment.Status
 
 	// Update fields if provided
 	if input.StudentID != 0 {
 		if input.StudentID <= 0 {
-			return nil, fmt.Errorf("student_id must be a positive integer")
+			return nil, false, fmt.Errorf("student_id must be a positive integer")
 		}
 		enrollment.StudentID = input.StudentID
 	}
 	if input.CourseID != 0 {
 		if input.CourseID <= 0 {
-			return nil, fmt.Errorf("course_id must be a positive integer")
+			return nil, false, fmt.Errorf("course_id must be a positive integer")
 		}
 		enrollment.CourseID = input.CourseID
 	}
 	if input.EnrollmentDate != "" {
 		enrollmentDate, err := time.Parse("2006-01-02", input.EnrollmentDate)
 		if err != nil {
-			return nil, fmt.Errorf("invalid enrollment_date format: use YYYY-MM-DD")
+			return nil, false, fmt.Errorf("invalid enrollment_date format: use YYYY-MM-DD")
 		}
 		enrollment.EnrollmentDate = enrollmentDate
 	}
 	if input.Status != "" {
 		enrollment.Status = input.Status
+		statusChanged = (oldStatus != input.Status)
 	}
 
 	enrollment.UpdatedAt = time.Now()
 
-	return enrollment, nil
+	return enrollment, statusChanged, nil
 }
 
 // Delete removes an enrollment
@@ -199,12 +205,16 @@ func (r *EnrollmentRepository) Delete(id int) error {
 
 // EnrollmentHandler handles HTTP requests for enrollments
 type EnrollmentHandler struct {
-	repo *EnrollmentRepository
+	repo      *EnrollmentRepository
+	mcpClient *mcp.Client
 }
 
 // NewEnrollmentHandler creates a new handler instance
-func NewEnrollmentHandler(repo *EnrollmentRepository) *EnrollmentHandler {
-	return &EnrollmentHandler{repo: repo}
+func NewEnrollmentHandler(repo *EnrollmentRepository, mcpClient *mcp.Client) *EnrollmentHandler {
+	return &EnrollmentHandler{
+		repo:      repo,
+		mcpClient: mcpClient,
+	}
 }
 
 // CreateEnrollment handles POST /api/enrollments
@@ -219,6 +229,23 @@ func (h *EnrollmentHandler) CreateEnrollment(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		respondError(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+
+	// Send enrollment to MCP if client is configured
+	if h.mcpClient != nil {
+		mcpReq := mcp.EnrollmentRequest{
+			StudentID:      enrollment.StudentID,
+			CourseID:       enrollment.CourseID,
+			EnrollmentDate: enrollment.EnrollmentDate,
+			Status:         enrollment.Status,
+		}
+
+		_, err := h.mcpClient.SendEnrollment(mcpReq)
+		if err != nil {
+			log.Printf("Warning: Failed to send enrollment ID %d to MCP: %v", enrollment.ID, err)
+			// Note: We don't fail the request if MCP is unavailable
+			// The enrollment is still created locally
+		}
 	}
 
 	respondJSON(w, enrollment, http.StatusCreated)
@@ -263,7 +290,7 @@ func (h *EnrollmentHandler) UpdateEnrollment(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	enrollment, err := h.repo.Update(id, input)
+	enrollment, statusChanged, err := h.repo.Update(id, input)
 	if err != nil {
 		if err.Error() == "enrollment not found" {
 			respondError(w, err.Error(), http.StatusNotFound)
@@ -271,6 +298,15 @@ func (h *EnrollmentHandler) UpdateEnrollment(w http.ResponseWriter, r *http.Requ
 			respondError(w, err.Error(), http.StatusBadRequest)
 		}
 		return
+	}
+
+	// Notify MCP of status change if client is configured and status actually changed
+	if h.mcpClient != nil && statusChanged {
+		err := h.mcpClient.UpdateEnrollmentStatus(enrollment.StudentID, enrollment.CourseID, enrollment.Status)
+		if err != nil {
+			log.Printf("Warning: Failed to update enrollment status in MCP for enrollment ID %d: %v", id, err)
+			// Note: We don't fail the request if MCP is unavailable
+		}
 	}
 
 	respondJSON(w, enrollment, http.StatusOK)
@@ -309,9 +345,27 @@ func respondError(w http.ResponseWriter, message string, statusCode int) {
 func main() {
 	r := mux.NewRouter()
 
+	// Initialize MCP client (optional - won't fail if not configured)
+	var mcpClient *mcp.Client
+	mcpConfig, err := mcp.LoadConfigFromEnv()
+	if err != nil {
+		log.Printf("MCP integration disabled: %v", err)
+		log.Println("To enable MCP integration, set MCP_BASE_URL and MCP_API_KEY environment variables")
+	} else {
+		mcpClient = mcp.NewClient(mcpConfig)
+		// Perform health check
+		if err := mcpClient.HealthCheck(); err != nil {
+			log.Printf("Warning: MCP health check failed: %v", err)
+			log.Println("Continuing without MCP integration")
+			mcpClient = nil
+		} else {
+			log.Println("✓ MCP connection established successfully")
+		}
+	}
+
 	// Initialize repository and handler
 	repo := NewEnrollmentRepository()
-	handler := NewEnrollmentHandler(repo)
+	handler := NewEnrollmentHandler(repo, mcpClient)
 
 	// API routes with /api prefix
 	api := r.PathPrefix("/api").Subrouter()

@@ -21,6 +21,32 @@ go run main.go
 curl http://localhost:8080
 ```
 
+### 🔌 MCP Integration (TEC-16)
+
+The Grade Management API now includes seamless integration with the MCP (Master Control Program) system for enrollment management.
+
+**Quick Start with MCP:**
+```bash
+# Copy and configure environment variables
+cp .env.example .env
+# Edit .env with your MCP credentials
+
+# Run with MCP integration
+go run main.go
+```
+
+**Features:**
+- ✅ Automatic enrollment synchronization to MCP
+- ✅ Status update notifications
+- ✅ Secure authentication with Bearer tokens
+- ✅ Automatic retry with exponential backoff
+- ✅ Comprehensive error handling and logging
+- ✅ Graceful degradation (works without MCP)
+
+**Documentation:**
+- See [MCP_INTEGRATION.md](./MCP_INTEGRATION.md) for complete integration guide
+- See [.env.example](./.env.example) for configuration options
+
 ### 🎯 Session 1 AI Agent Plan
 
 **Act 1: CRUD Boilerplate** → **Cloud Coding Agent**
@@ -59,4 +85,3 @@ curl http://localhost:8080
 - Ideal for documentation tasks
 - Non-blocking workflow
 - Can work while you demo other features
-
