@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math"
 	"net/http"
 	"time"
 )
@@ -78,9 +77,7 @@ func (c *Client) doWithRetry(method, url string, jsonData []byte, operation stri
 
 		httpReq.Header.Set("Content-Type", "application/json")
 		httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.config.APIKey))
-		if method == "POST" {
-			httpReq.Header.Set("X-Client-Version", ClientVersion)
-		}
+		httpReq.Header.Set("X-Client-Version", ClientVersion)
 
 		resp, lastErr = c.httpClient.Do(httpReq)
 		if lastErr == nil && resp.StatusCode < 500 {
@@ -92,8 +89,8 @@ func (c *Client) doWithRetry(method, url string, jsonData []byte, operation stri
 		}
 
 		if attempt < c.config.MaxRetries {
-			// Exponential backoff: 2^attempt seconds
-			backoff := time.Duration(math.Pow(2, float64(attempt))) * time.Second
+			// Exponential backoff: 2^attempt seconds (using bit shift for efficiency)
+			backoff := time.Duration(1<<uint(attempt)) * time.Second
 			if c.config.EnableLogging {
 				log.Printf("[MCP] Request failed, retrying after %v", backoff)
 			}

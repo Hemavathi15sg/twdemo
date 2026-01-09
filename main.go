@@ -242,7 +242,7 @@ func (h *EnrollmentHandler) CreateEnrollment(w http.ResponseWriter, r *http.Requ
 
 		_, err := h.mcpClient.SendEnrollment(mcpReq)
 		if err != nil {
-			log.Printf("Warning: Failed to send enrollment to MCP: %v", err)
+			log.Printf("Warning: Failed to send enrollment ID %d to MCP: %v", enrollment.ID, err)
 			// Note: We don't fail the request if MCP is unavailable
 			// The enrollment is still created locally
 		}
@@ -304,7 +304,7 @@ func (h *EnrollmentHandler) UpdateEnrollment(w http.ResponseWriter, r *http.Requ
 	if h.mcpClient != nil && statusChanged {
 		err := h.mcpClient.UpdateEnrollmentStatus(enrollment.StudentID, enrollment.CourseID, enrollment.Status)
 		if err != nil {
-			log.Printf("Warning: Failed to update enrollment status in MCP: %v", err)
+			log.Printf("Warning: Failed to update enrollment status in MCP for enrollment ID %d: %v", id, err)
 			// Note: We don't fail the request if MCP is unavailable
 		}
 	}
