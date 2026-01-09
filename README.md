@@ -17,6 +17,7 @@ docker-compose up -d
 
 # Test basic server
 go run main.go
+
 curl http://localhost:8080
 ```
 
