@@ -60,5 +60,3 @@ curl http://localhost:8080
 - Non-blocking workflow
 - Can work while you demo other features
 
----
-**Ready for 30-minute AI delegation demo!** 🤖✨
