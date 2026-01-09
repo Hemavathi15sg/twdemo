@@ -4,6 +4,7 @@
 *.dll
 *.so
 *.dylib
+grade-api
 
 # Test files
 *.test

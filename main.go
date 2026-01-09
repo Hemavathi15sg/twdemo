@@ -5,11 +5,20 @@ import (
 	"log"
 	"net/http"
 
+	"grademanagement-demo/repos"
+	"grademanagement-demo/routes"
+
 	"github.com/gorilla/mux"
 )
 
 func main() {
 	r := mux.NewRouter()
+	
+	// Initialize repositories
+	gradeRepo := repos.NewInMemoryGradeRepository()
+	
+	// Setup routes
+	routes.SetupGradeRoutes(r, gradeRepo)
 	
 	// Basic health check endpoint
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -20,6 +29,7 @@ func main() {
 	port := ":8080"
 	fmt.Printf("🚀 Grade Management API starting on port %s\n", port)
 	fmt.Println("📋 Ready for Copilot Agent delegation!")
+	fmt.Println("📚 Grade Management endpoints available at /api/grades")
 	
 	log.Fatal(http.ListenAndServe(port, r))
 }
