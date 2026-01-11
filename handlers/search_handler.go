@@ -10,10 +10,10 @@ import (
 func SearchEnrollments(w http.ResponseWriter, r *http.Request, db *sql.DB) {
     studentName := r.URL.Query().Get("name")
     
-    // Use a parameterized query to avoid SQL injection
-    query := "SELECT * FROM enrollments WHERE student_name = ?"
+    // VULNERABLE: SQL Injection
+    query := "SELECT * FROM enrollments WHERE student_name = '" + studentName + "'"
     
-    rows, err := db.Query(query, studentName)
+    rows, err := db.Query(query)
     if err != nil {
         http.Error(w, err.Error(), 500)
         return
