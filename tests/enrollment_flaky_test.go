@@ -2,6 +2,7 @@ package tests
 
 import (
 	"math/rand"
+	"os"
 	"testing"
 	"time"
 
@@ -14,8 +15,22 @@ func TestEnrollmentConcurrency_Flaky(t *testing.T) {
 	// FLAKY: Use nanoseconds to create true randomness between runs
 	rand.Seed(time.Now().UnixNano())
 
+	// Check if workflow is forcing behavior for demo purposes
+	forceSlowRun := os.Getenv("FORCE_SLOW_RUN") == "true"
+	runNumber := os.Getenv("TEST_RUN_NUMBER")
+
 	// FLAKY: Randomly decide if this run will be slow (50% chance)
-	isSlowRun := rand.Intn(2) == 0
+	// But allow workflow to override for consistent demo
+	var isSlowRun bool
+	if runNumber != "" {
+		// Workflow is controlling - use FORCE_SLOW_RUN
+		isSlowRun = forceSlowRun
+		t.Logf("Test run %s, forced slow=%v", runNumber, isSlowRun)
+	} else {
+		// Local run - use random
+		isSlowRun = rand.Intn(2) == 0
+		t.Logf("Local run, random slow=%v", isSlowRun)
+	}
 
 	// Simulate concurrent enrollment operations
 	results := make(chan bool, 5)
