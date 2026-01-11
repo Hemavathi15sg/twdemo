@@ -13,10 +13,10 @@ import (
 func TestEnrollmentConcurrency_Flaky(t *testing.T) {
 	// FLAKY: Use nanoseconds to create true randomness between runs
 	rand.Seed(time.Now().UnixNano())
-	
+
 	// FLAKY: Randomly decide if this run will be slow (50% chance)
 	isSlowRun := rand.Intn(2) == 0
-	
+
 	// Simulate concurrent enrollment operations
 	results := make(chan bool, 5)
 
