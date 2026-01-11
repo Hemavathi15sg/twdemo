@@ -1,0 +1,346 @@
+openapi: 3.0.3
+info:
+  title: Grade Management API
+  description: |-
+    RESTful API for managing student enrollments with Redis caching support.
+    
+    This API provides comprehensive CRUD operations for enrollments with:
+    - Redis-backed caching with 5-minute TTL
+    - Cache status tracking via X-Cache-Status header
+    - Status validation (pending/active/completed only)
+    - Thread-safe in-memory storage
+    
+    **Cache Behavior:**
+    - `X-Cache-Status: HIT` - Data served from Redis cache
+    - `X-Cache-Status: MISS` - Data fetched from storage and cached
+    - `X-Cache-Status: SKIP` - Operation does not use cache
+  version: 1.0.0
+  contact:
+    email: api@grademanagement.com
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+tags:
+  - name: enrollments
+    description: Enrollment management operations
+  - name: health
+    description: Health check endpoints
+
+paths:
+  /:
+    get:
+      tags:
+        - health
+      summary: Health check endpoint
+      description: Returns API health status
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Grade Management API with Redis Caching"
+                  status:
+                    type: string
+                    example: "healthy"
+
+  /api/enrollments:
+    get:
+      tags:
+        - enrollments
+      summary: List all enrollments
+      description: Retrieves all enrollments from the system (cache not used for list operations)
+      responses:
+        '200':
+          description: Successful response with enrollment list
+          headers:
+            X-Cache-Status:
+              description: Cache status indicator
+              schema:
+                type: string
+                enum: [SKIP]
+                example: SKIP
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Enrollment'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - enrollments
+      summary: Create a new enrollment
+      description: Creates a new enrollment with validation and caches the result
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnrollmentInput'
+      responses:
+        '201':
+          description: Enrollment created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Enrollment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/enrollments/{id}:
+    get:
+      tags:
+        - enrollments
+      summary: Get enrollment by ID
+      description: |-
+        Retrieves a specific enrollment by ID with cache-aside pattern:
+        1. Check Redis cache first
+        2. On cache miss, fetch from storage
+        3. Cache the result for future requests (5-minute TTL)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Enrollment ID
+          schema:
+            type: integer
+            minimum: 1
+            example: 1
+      responses:
+        '200':
+          description: Successful response
+          headers:
+            X-Cache-Status:
+              description: Indicates if response was served from cache
+              schema:
+                type: string
+                enum: [HIT, MISS]
+                example: HIT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Enrollment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags:
+        - enrollments
+      summary: Update an enrollment
+      description: |-
+        Updates an existing enrollment and invalidates cache.
+        All fields are optional - only provided fields will be updated.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Enrollment ID
+          schema:
+            type: integer
+            minimum: 1
+            example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnrollmentInput'
+      responses:
+        '200':
+          description: Enrollment updated successfully (cache invalidated)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Enrollment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - enrollments
+      summary: Delete an enrollment
+      description: Deletes an enrollment and invalidates its cache entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Enrollment ID
+          schema:
+            type: integer
+            minimum: 1
+            example: 1
+      responses:
+        '200':
+          description: Enrollment deleted successfully (cache invalidated)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  schemas:
+    Enrollment:
+      type: object
+      required:
+        - id
+        - student_id
+        - course_id
+        - enrollment_date
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+          description: Unique identifier for the enrollment
+          example: 1
+        student_id:
+          type: integer
+          description: ID of the enrolled student
+          minimum: 1
+          example: 123
+        course_id:
+          type: integer
+          description: ID of the course
+          minimum: 1
+          example: 456
+        enrollment_date:
+          type: string
+          format: date-time
+          description: Date when the enrollment occurred
+          example: "2026-01-09T10:30:00Z"
+        status:
+          type: string
+          enum: [pending, active, completed]
+          description: Current status of the enrollment
+          example: "active"
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the enrollment was created
+          example: "2026-01-09T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when the enrollment was last updated
+          example: "2026-01-09T10:30:00Z"
+
+    EnrollmentInput:
+      type: object
+      required:
+        - student_id
+        - course_id
+        - status
+      properties:
+        student_id:
+          type: integer
+          description: ID of the student to enroll
+          minimum: 1
+          example: 123
+        course_id:
+          type: integer
+          description: ID of the course
+          minimum: 1
+          example: 456
+        enrollment_date:
+          type: string
+          format: date
+          description: Optional enrollment date (YYYY-MM-DD). Defaults to current date if not provided.
+          example: "2026-01-09"
+        status:
+          type: string
+          enum: [pending, active, completed]
+          description: Status of the enrollment. Must be one of the allowed values.
+          example: "active"
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+          example: "enrollment not found"
+
+    SuccessResponse:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: Success message
+          example: "enrollment deleted successfully"
+        data:
+          type: object
+          description: Optional additional data
+          nullable: true
+
+  responses:
+    BadRequest:
+      description: Bad request - invalid input data
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            invalidStatus:
+              value:
+                error: "invalid status: must be one of pending, active, or completed"
+            invalidStudentId:
+              value:
+                error: "student_id must be a positive integer"
+            invalidCourseId:
+              value:
+                error: "course_id must be a positive integer"
+            invalidDate:
+              value:
+                error: "invalid enrollment_date format: use YYYY-MM-DD"
+            invalidBody:
+              value:
+                error: "invalid request body"
+            invalidId:
+              value:
+                error: "invalid enrollment ID"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "enrollment not found"
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "internal server error"
