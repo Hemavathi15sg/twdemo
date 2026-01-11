@@ -37,8 +37,8 @@ func TestEnrollmentConcurrency_Flaky(t *testing.T) {
 
 	// FLAKY: Not waiting for all goroutines
 	successCount := 0
-	// FLAKY: Timeout is borderline - sometimes enough, sometimes not
-	timeout := time.After(80 * time.Millisecond)
+	// FLAKY: Timeout is too short - will timeout about 50% of the time
+	timeout := time.After(40 * time.Millisecond)
 
 	for i := 0; i < 5; i++ {
 		select {
@@ -49,9 +49,10 @@ func TestEnrollmentConcurrency_Flaky(t *testing.T) {
 		case <-timeout:
 			// FLAKY: Times out before all complete (sometimes)
 			t.Logf("Timeout after %d results", successCount)
-			break
+			goto done
 		}
 	}
+done:
 
 	// FLAKY: Assertion may fail if timeout occurs early
 	assert.Equal(t, 5, successCount, "Expected all 5 enrollments to succeed")
@@ -59,7 +60,7 @@ func TestEnrollmentConcurrency_Flaky(t *testing.T) {
 
 func createTestEnrollment(id int) struct{ ID int } {
 	// Simulate database operation with variable timing
-	randomDelay := rand.Intn(40) // 0-40ms random delay
+	randomDelay := rand.Intn(50) // 0-50ms random delay - higher variability
 	time.Sleep(time.Duration(randomDelay) * time.Millisecond)
 	return struct{ ID int }{ID: id + 1}
 }
