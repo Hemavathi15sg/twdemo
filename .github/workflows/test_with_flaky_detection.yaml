@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [ main, feature/*, check/*, test/* ]
 
+# Add permissions to create issues
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   test-with-retry:
     runs-on: ubuntu-latest
@@ -166,19 +171,27 @@ jobs:
         path: test_run_*.log
         retention-days: 5
     
-    - name: Create Jira Issue for Flaky Test
+    - name: Jira Integration (Optional - Demo)
       if: env.FLAKY_DETECTED == 'true'
       run: |
-        echo "📝 Creating tracking issue for flaky test remediation..."
+        echo "📝 Jira Integration (Demo Mode - Not Configured)"
         echo ""
-        echo "Issue Details:"
-        echo "  Title: Flaky Test - TestEnrollmentConcurrency_Flaky"
-        echo "  Type: Bug"
-        echo "  Priority: High (blocks CI reliability)"
-        echo "  Failed: ${{ env.FAIL_COUNT }}/3 runs"
-        echo "  Labels: flaky-test, self-healing, automated"
+        echo "⚠️  To enable Jira integration, configure:"
+        echo "   1. Add JIRA_BASE_URL to repository secrets"
+        echo "   2. Add JIRA_USER_EMAIL to repository secrets"
+        echo "   3. Add JIRA_API_TOKEN to repository secrets"
+        echo "   4. Uncomment the Jira MCP integration in this workflow"
         echo ""
-        echo "✅ GitHub Issue will be created automatically"
+        echo "📋 Would create Jira issue with:"
+        echo "  Project: YOUR_PROJECT_KEY"
+        echo "  Issue Type: Bug"
+        echo "  Summary: Flaky Test - TestEnrollmentConcurrency_Flaky"
+        echo "  Priority: High"
+        echo "  Description: Test failed ${{ env.FAIL_COUNT }}/3 runs"
+        echo "  Labels: flaky-test, ci-pipeline, automated"
+        echo ""
+        echo "✅ GitHub Issue created as primary tracking method"
+        echo "ℹ️  For production, integrate with Atlassian MCP for Jira automation""
         echo "✅ Test logs uploaded as artifacts"
         echo "✅ Self-healing recommendations provided"
         echo ""
