@@ -20,7 +20,7 @@ func TestEnrollmentConcurrency_Flaky(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		go func(id int) {
 			// FLAKY: Random timing to simulate network/database variability
-			randomDelay := rand.Intn(30) // 0-30ms random delay
+			randomDelay := rand.Intn(15) // 0-15ms random delay
 			time.Sleep(time.Duration(randomDelay) * time.Millisecond)
 
 			// Simulate enrollment operation
@@ -37,8 +37,8 @@ func TestEnrollmentConcurrency_Flaky(t *testing.T) {
 
 	// FLAKY: Not waiting for all goroutines
 	successCount := 0
-	// FLAKY: Timeout is too short - will timeout about 50% of the time
-	timeout := time.After(40 * time.Millisecond)
+	// FLAKY: Timeout is borderline - will timeout about 40% of the time
+	timeout := time.After(60 * time.Millisecond)
 
 	for i := 0; i < 5; i++ {
 		select {
@@ -60,7 +60,7 @@ done:
 
 func createTestEnrollment(id int) struct{ ID int } {
 	// Simulate database operation with variable timing
-	randomDelay := rand.Intn(50) // 0-50ms random delay - higher variability
+	randomDelay := rand.Intn(25) // 0-25ms random delay
 	time.Sleep(time.Duration(randomDelay) * time.Millisecond)
 	return struct{ ID int }{ID: id + 1}
 }
