@@ -2,9 +2,9 @@ name: Tests with Flaky Detection
 
 on:
   push:
-    branches: [ main, feature/*, check/* ]
+    branches: [ main, feature/*, check/*, test/* ]
   pull_request:
-    branches: [ main, feature/*, check/* ,test/* ]
+    branches: [ main, feature/*, check/*, test/* ]
 
 jobs:
   test-with-retry:
