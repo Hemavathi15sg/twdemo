@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"math/rand"
 	"testing"
 	"time"
 	"github.com/stretchr/testify/assert"
@@ -9,13 +10,17 @@ import (
 // TestEnrollmentConcurrency_Flaky demonstrates a flaky test with race condition
 // This test intentionally has timing issues to demonstrate auto-fix capability
 func TestEnrollmentConcurrency_Flaky(t *testing.T) {
+	// Seed with current time to get different behavior on each run
+	rand.Seed(time.Now().UnixNano())
+	
 	// Simulate concurrent enrollment operations
 	results := make(chan bool, 5)
 	
 	for i := 0; i < 5; i++ {
 		go func(id int) {
-			// FLAKY: No synchronization, random timing
-			time.Sleep(time.Duration(id*10) * time.Millisecond)
+			// FLAKY: Random timing to simulate network/database variability
+			randomDelay := rand.Intn(30) // 0-30ms random delay
+			time.Sleep(time.Duration(randomDelay) * time.Millisecond)
 			
 			// Simulate enrollment operation
 			enrollment := createTestEnrollment(id)
@@ -31,7 +36,8 @@ func TestEnrollmentConcurrency_Flaky(t *testing.T) {
 	
 	// FLAKY: Not waiting for all goroutines
 	successCount := 0
-	timeout := time.After(50 * time.Millisecond) // Too short!
+	// FLAKY: Timeout is borderline - sometimes enough, sometimes not
+	timeout := time.After(80 * time.Millisecond)
 	
 	for i := 0; i < 5; i++ {
 		select {
@@ -40,7 +46,7 @@ func TestEnrollmentConcurrency_Flaky(t *testing.T) {
 				successCount++
 			}
 		case <-timeout:
-			// FLAKY: Times out before all complete
+			// FLAKY: Times out before all complete (sometimes)
 			t.Logf("Timeout after %d results", successCount)
 			break
 		}
@@ -52,6 +58,7 @@ func TestEnrollmentConcurrency_Flaky(t *testing.T) {
 
 func createTestEnrollment(id int) struct{ ID int } {
 	// Simulate database operation with variable timing
-	time.Sleep(time.Duration(id*15) * time.Millisecond)
+	randomDelay := rand.Intn(40) // 0-40ms random delay
+	time.Sleep(time.Duration(randomDelay) * time.Millisecond)
 	return struct{ ID int }{ID: id + 1}
 }
