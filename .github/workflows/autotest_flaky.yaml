@@ -94,88 +94,100 @@ jobs:
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
         script: |
-          // Create a comment that triggers Copilot Workspace to fix the test
-          const issue = await github.rest.issues.create({
+          // Get or create PR for the flaky test fix
+          let prNumber;
+          
+          // Check if this is a PR context
+          if (context.payload.pull_request) {
+            prNumber = context.payload.pull_request.number;
+          } else {
+            // Create a new issue to track this
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🤖 Flaky Test Auto-Fix Request',
+              body: `## Flaky Test Detected - Awaiting Copilot Fix
+              
+              A flaky test was detected in the CI pipeline. This issue tracks the automated fix request.
+              
+              **Test:** TestEnrollmentConcurrency_Flaky
+              **Failed:** ${{ env.FAIL_COUNT }} out of 3 runs
+              **Workflow:** [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+              
+              See comment below for Copilot fix instructions.`,
+              labels: ['flaky-test', 'copilot-fix', 'automated']
+            });
+            prNumber = issue.data.number;
+          }
+          
+          // Post comment to trigger Copilot
+          const commentBody = [
+            '@copilot Fix the flaky test in `tests/enrollment_flaky_test.go`',
+            '',
+            '## Problem Analysis',
+            'The test `TestEnrollmentConcurrency_Flaky` failed ${{ env.FAIL_COUNT }} out of 3 runs due to:',
+            '- ⏱️ Timing issues with arbitrary timeouts',
+            '- 🔄 Race conditions in goroutines',
+            '- ⚠️ No proper synchronization (missing WaitGroup)',
+            '',
+            '## Fix Requirements',
+            '1. Replace timeout pattern with sync.WaitGroup',
+            '2. Remove all random timing and FORCE_SLOW_RUN logic',
+            '3. Ensure deterministic test execution',
+            '4. Add proper channel closure',
+            '',
+            '## Expected Implementation',
+            '```go',
+            'func TestEnrollmentConcurrency_Flaky(t *testing.T) {',
+            '    var wg sync.WaitGroup',
+            '    results := make(chan bool, 5)',
+            '    for i := 0; i < 5; i++ {',
+            '        wg.Add(1)',
+            '        go func(id int) {',
+            '            defer wg.Done()',
+            '            enrollment := createTestEnrollment(id)',
+            '            results <- enrollment.ID > 0',
+            '        }(i)',
+            '    }',
+            '    wg.Wait()',
+            '    close(results)',
+            '    successCount := 0',
+            '    for success := range results {',
+            '        if success { successCount++ }',
+            '    }',
+            '    assert.Equal(t, 5, successCount)',
+            '}',
+            '```',
+            '',
+            '**Files:** `tests/enrollment_flaky_test.go`',
+            '**Logs:** [Run ${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})',
+            '',
+            'Please generate the fix. #fix'
+          ].join('\n');
+          
+          await github.rest.issues.createComment({
             owner: context.repo.owner,
             repo: context.repo.repo,
-            title: '🤖 Auto-Fix Request: Flaky Test Detected',
-            body: `@copilot-workspace 
-            
-            ## Automated Flaky Test Fix Request
-            
-            **Task:** Fix the flaky test in \`tests/enrollment_flaky_test.go\`
-            
-            **Test Name:** TestEnrollmentConcurrency_Flaky
-            **Failed:** ${{ env.FAIL_COUNT }} out of 3 runs
-            **Root Cause:** Timing issues, race conditions, improper synchronization
-            
-            ### Instructions for Copilot:
-            
-            Please fix this flaky test by:
-            
-            1. **Replace timeout with sync.WaitGroup**:
-               - Remove the \`time.After()\` timeout pattern
-               - Add \`var wg sync.WaitGroup\`
-               - Use \`wg.Add(5)\` before goroutines
-               - Add \`defer wg.Done()\` in each goroutine
-               - Use \`wg.Wait()\` to wait for completion
-            
-            2. **Remove random timing variability**:
-               - Remove \`FORCE_SLOW_RUN\` logic
-               - Remove random delays (\`rand.Intn()\`)
-               - Use deterministic test execution
-            
-            3. **Ensure proper cleanup**:
-               - Close channels properly
-               - Add cleanup in defer statements
-            
-            ### Expected Code Pattern:
-            \`\`\`go
-            var wg sync.WaitGroup
-            results := make(chan bool, 5)
-            
-            for i := 0; i < 5; i++ {
-                wg.Add(1)
-                go func(id int) {
-                    defer wg.Done()
-                    enrollment := createTestEnrollment(id)
-                    results <- enrollment.ID > 0
-                }(i)
-            }
-            
-            wg.Wait()
-            close(results)
-            
-            successCount := 0
-            for success := range results {
-                if success {
-                    successCount++
-                }
-            }
-            \`\`\`
-            
-            ### Files to Modify:
-            - \`tests/enrollment_flaky_test.go\`
-            
-            ### Test Logs:
-            Available in workflow artifacts: [${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-            
-            **Please create a PR with the fix.**
-            
-            /fix`,
-            labels: ['copilot-workspace', 'auto-fix', 'flaky-test']
+            issue_number: prNumber,
+            body: commentBody
           });
           
-          console.log('✅ Created Copilot Workspace task:', issue.data.html_url);
-          console.log('🤖 Copilot will analyze and create a PR with the fix');
+          console.log('✅ Triggered Copilot via comment on issue/PR #' + prNumber);
+          console.log('🤖 Copilot will analyze and respond with a fix');
     
     - name: Trigger Copilot Fix Summary
       if: env.FLAKY_DETECTED == 'true'
       run: |
         echo "🤖 GitHub Copilot Auto-Fix Triggered!"
-        echo "✅ Copilot Workspace will analyze the test"
-        echo "✅ Copilot will create a PR with the fix"
-        echo "✅ Review the PR to apply the self-healing fix"
+        echo "✅ Posted @copilot mention with fix instructions"
+        echo "✅ Copilot will analyze the code and respond"
+        echo "✅ Check the issue/PR for Copilot's response"
+        echo ""
+        echo "💡 Copilot will:"
+        echo "   - Analyze the flaky test code"
+        echo "   - Generate a fix with WaitGroup"
+        echo "   - Respond in the issue/PR comment"
+        echo "   - Create a PR if requested with #fix tag"
     
     - name: Create GitHub Issue for Flaky Test
       if: env.FLAKY_DETECTED == 'true'
@@ -265,8 +277,4 @@ jobs:
         echo "  Labels: flaky-test, ci-pipeline, automated"
         echo ""
         echo "✅ GitHub Issue created as primary tracking method"
-        echo "ℹ️  For production, integrate with Atlassian MCP for Jira automation""
-        echo "✅ Test logs uploaded as artifacts"
-        echo "✅ Self-healing recommendations provided"
-        echo ""
-        echo "🤖 GitHub Copilot can now analyze the logs and suggest fixes"
+        echo "ℹ️  For production, integrate with Atlassian MCP for Jira automation"
