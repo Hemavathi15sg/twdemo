@@ -2,31 +2,31 @@ package models
 
 import "time"
 
-// Enrollment model with required fields
+// Enrollment represents a student's enrollment in a course
 type Enrollment struct {
-	ID             int       `json:"id"`
-	StudentID      int       `json:"student_id"`
-	CourseID       int       `json:"course_id"`
+	ID             string    `json:"id"`
+	StudentID      string    `json:"student_id"`
+	CourseID       string    `json:"course_id"`
 	EnrollmentDate time.Time `json:"enrollment_date"`
-	Status         string    `json:"status"`
+	Status         string    `json:"status"` // pending, active, completed
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
-// EnrollmentInput for creating/updating enrollments
-type EnrollmentInput struct {
-	StudentID      int    `json:"student_id"`
-	CourseID       int    `json:"course_id"`
-	EnrollmentDate string `json:"enrollment_date,omitempty"`
-	Status         string `json:"status"`
+// CreateEnrollmentRequest represents the request body for creating an enrollment
+type CreateEnrollmentRequest struct {
+	StudentID      string `json:"student_id"`
+	CourseID       string `json:"course_id"`
+	EnrollmentDate string `json:"enrollment_date,omitempty"` // Optional, defaults to now
+	Status         string `json:"status,omitempty"`          // Optional, defaults to "pending"
 }
 
-// ValidateStatus checks if status is one of the allowed values
+// UpdateEnrollmentRequest represents the request body for updating an enrollment
+type UpdateEnrollmentRequest struct {
+	Status string `json:"status,omitempty"`
+}
+
+// ValidateStatus checks if the status is valid (pending, active, or completed)
 func ValidateStatus(status string) bool {
-	validStatuses := map[string]bool{
-		"pending":   true,
-		"active":    true,
-		"completed": true,
-	}
-	return validStatuses[status]
+	return status == "pending" || status == "active" || status == "completed"
 }
