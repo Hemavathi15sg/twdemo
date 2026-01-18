@@ -14,12 +14,12 @@ import (
 func main() {
 	// Initialize repository
 	enrollmentRepo := repositories.NewInMemoryEnrollmentRepository()
-	
+
 	// Initialize handlers
 	enrollmentHandler := handlers.NewEnrollmentHandler(enrollmentRepo)
-	
+
 	r := mux.NewRouter()
-	
+
 	// Basic health check endpoint
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -28,7 +28,7 @@ func main() {
 
 	// API routes with /api prefix
 	api := r.PathPrefix("/api").Subrouter()
-	
+
 	// Enrollment routes
 	api.HandleFunc("/enrollments", enrollmentHandler.Create).Methods("POST")
 	api.HandleFunc("/enrollments", enrollmentHandler.List).Methods("GET")
@@ -45,6 +45,6 @@ func main() {
 	fmt.Println("   GET    /api/enrollments/{id}")
 	fmt.Println("   PUT    /api/enrollments/{id}")
 	fmt.Println("   DELETE /api/enrollments/{id}")
-	
+
 	log.Fatal(http.ListenAndServe(port, r))
 }
