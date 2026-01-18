@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"grademanagement-demo/jira"
+	"grademanagement-demo/utils"
 
 	"github.com/gorilla/mux"
 )
@@ -27,7 +28,7 @@ func (h *JiraHandler) GetJiraIssue(w http.ResponseWriter, r *http.Request) {
 	issueKey := vars["key"]
 
 	if issueKey == "" {
-		respondError(w, "issue key is required", http.StatusBadRequest)
+		utils.RespondError(w, "issue key is required", http.StatusBadRequest)
 		return
 	}
 
@@ -43,9 +44,9 @@ func (h *JiraHandler) GetJiraIssue(w http.ResponseWriter, r *http.Request) {
 			statusCode = http.StatusUnauthorized
 		}
 
-		respondError(w, err.Error(), statusCode)
+		utils.RespondError(w, err.Error(), statusCode)
 		return
 	}
 
-	respondJSON(w, issue, http.StatusOK)
+	utils.RespondJSON(w, issue, http.StatusOK)
 }

@@ -361,9 +361,10 @@ components:
           description: Issue fields
           required:
             - summary
-            - description
             - status
             - issuetype
+            - created
+            - updated
           properties:
             summary:
               type: string
@@ -371,7 +372,7 @@ components:
               example: "Create enrollment feature"
             description:
               type: string
-              description: Issue description
+              description: Issue description (may be empty)
               example: "Implement student enrollment API with CRUD operations"
             status:
               type: object
