@@ -1,6 +1,6 @@
 ---
 applyTo: '**'
-excludeAgent: ["coding-agent"]
+
 ---
 
 # Go Clean Architecture Guidelines
@@ -45,19 +45,7 @@ excludeAgent: ["coding-agent"]
 - Use DTOs/request-response structs when needed
 
 ## Testing Requirements
-- Write unit tests for ALL new features and functions
-- Test file naming: `*_test.go`
-- Use table-driven tests for multiple scenarios
-- Mock external dependencies using interfaces
-- Aim for >80% code coverage
-- Include tests for:
-  - Happy path scenarios
-  - Error cases and edge cases
-  - Validation logic
-  - Repository operations
-  - Use case business logic
--agents should follow these guidelines when generating code, test after code generation or reviewing changes.
-
+- agents should show commands to test after code generation 
 
 ## General Go Best Practices
 - Use meaningful variable and function names
