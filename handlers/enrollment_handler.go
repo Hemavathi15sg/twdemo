@@ -23,13 +23,13 @@ func NewEnrollmentHandler(useCase *usecases.EnrollmentUseCase) *EnrollmentHandle
 
 // CreateEnrollment handles POST /enrollments
 func (h *EnrollmentHandler) CreateEnrollment(w http.ResponseWriter, r *http.Request) {
-	var enrollment models.Enrollment
+	defer r.Body.Close()
 	
+	var enrollment models.Enrollment
 	if err := json.NewDecoder(r.Body).Decode(&enrollment); err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
-	defer r.Body.Close()
 
 	created, err := h.useCase.CreateEnrollment(r.Context(), &enrollment)
 	if err != nil {
@@ -56,6 +56,8 @@ func (h *EnrollmentHandler) GetEnrollment(w http.ResponseWriter, r *http.Request
 
 // UpdateEnrollment handles PUT /enrollments/{id}
 func (h *EnrollmentHandler) UpdateEnrollment(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	
 	vars := mux.Vars(r)
 	id := vars["id"]
 
@@ -64,7 +66,6 @@ func (h *EnrollmentHandler) UpdateEnrollment(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
-	defer r.Body.Close()
 
 	enrollment.ID = id
 	updated, err := h.useCase.UpdateEnrollment(r.Context(), &enrollment)

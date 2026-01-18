@@ -8,6 +8,7 @@ import (
 // EnrollmentRepository defines the interface for enrollment data access operations
 type EnrollmentRepository interface {
 	// Create creates a new enrollment
+	// If enrollment.EnrollmentDate is not set, it will be set to the current time
 	Create(ctx context.Context, enrollment *models.Enrollment) (*models.Enrollment, error)
 	
 	// GetByID retrieves an enrollment by its ID
