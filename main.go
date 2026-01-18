@@ -9,6 +9,7 @@ import (
 
 	"grademanagement-demo/cache"
 	"grademanagement-demo/handlers"
+	"grademanagement-demo/jira"
 	"grademanagement-demo/repository"
 
 	"github.com/gorilla/mux"
@@ -37,18 +38,27 @@ func main() {
 
 	r := mux.NewRouter()
 
-	// Initialize repository, cache, and handler
+	// Initialize repository, cache, and handlers
 	repo := repository.NewEnrollmentRepository()
 	enrollmentCache := cache.NewEnrollmentCache(redisClient)
-	handler := handlers.NewEnrollmentHandler(repo, enrollmentCache)
+	enrollmentHandler := handlers.NewEnrollmentHandler(repo, enrollmentCache)
+
+	// Initialize Jira client and handler
+	jiraClient := jira.NewJiraClient()
+	jiraHandler := handlers.NewJiraHandler(jiraClient)
 
 	// API routes with /api prefix
 	api := r.PathPrefix("/api").Subrouter()
-	api.HandleFunc("/enrollments", handler.CreateEnrollment).Methods("POST")
-	api.HandleFunc("/enrollments", handler.ListEnrollments).Methods("GET")
-	api.HandleFunc("/enrollments/{id}", handler.GetEnrollment).Methods("GET")
-	api.HandleFunc("/enrollments/{id}", handler.UpdateEnrollment).Methods("PUT")
-	api.HandleFunc("/enrollments/{id}", handler.DeleteEnrollment).Methods("DELETE")
+
+	// Enrollment endpoints
+	api.HandleFunc("/enrollments", enrollmentHandler.CreateEnrollment).Methods("POST")
+	api.HandleFunc("/enrollments", enrollmentHandler.ListEnrollments).Methods("GET")
+	api.HandleFunc("/enrollments/{id}", enrollmentHandler.GetEnrollment).Methods("GET")
+	api.HandleFunc("/enrollments/{id}", enrollmentHandler.UpdateEnrollment).Methods("PUT")
+	api.HandleFunc("/enrollments/{id}", enrollmentHandler.DeleteEnrollment).Methods("DELETE")
+
+	// Jira integration endpoint
+	api.HandleFunc("/jira/issues/{key}", jiraHandler.GetJiraIssue).Methods("GET")
 
 	// Basic health check endpoint
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -59,6 +69,7 @@ func main() {
 	port := ":8080"
 	fmt.Printf("🚀 Grade Management API starting on port %s\n", port)
 	fmt.Println("📋 Enrollment API available at /api/enrollments")
+	fmt.Println("🔗 Jira integration available at /api/jira/issues/{key}")
 	fmt.Println("⚡ Redis caching enabled with 5-minute TTL")
 
 	log.Fatal(http.ListenAndServe(port, r))

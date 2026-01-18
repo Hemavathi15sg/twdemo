@@ -23,6 +23,8 @@ servers:
 tags:
   - name: enrollments
     description: Enrollment management operations
+  - name: jira
+    description: Jira integration operations
   - name: health
     description: Health check endpoints
 
@@ -200,6 +202,50 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /api/jira/issues/{key}:
+    get:
+      tags:
+        - jira
+      summary: Get Jira issue by key
+      description: |-
+        Retrieves a Jira issue by its key (e.g., TEC-16).
+        Requires JIRA_BASE_URL, JIRA_API_TOKEN, and JIRA_EMAIL environment variables.
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: Jira issue key (e.g., TEC-16, PROJ-123)
+          schema:
+            type: string
+            example: TEC-16
+      responses:
+        '200':
+          description: Successful response with Jira issue details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JiraIssue'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "authentication failed: check JIRA_EMAIL and JIRA_API_TOKEN"
+        '404':
+          description: Jira issue not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "issue TEC-16 not found"
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   schemas:
     Enrollment:
@@ -299,6 +345,59 @@ components:
           type: object
           description: Optional additional data
           nullable: true
+
+    JiraIssue:
+      type: object
+      required:
+        - key
+        - fields
+      properties:
+        key:
+          type: string
+          description: Jira issue key
+          example: "TEC-16"
+        fields:
+          type: object
+          description: Issue fields
+          required:
+            - summary
+            - status
+            - issuetype
+            - created
+            - updated
+          properties:
+            summary:
+              type: string
+              description: Issue summary/title
+              example: "Create enrollment feature"
+            description:
+              type: string
+              description: Issue description (may be empty)
+              example: "Implement student enrollment API with CRUD operations"
+            status:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Status name
+                  example: "Done"
+            issuetype:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Issue type
+                  example: "Story"
+            created:
+              type: string
+              format: date-time
+              description: Creation timestamp
+              example: "2026-01-15T10:00:00Z"
+            updated:
+              type: string
+              format: date-time
+              description: Last update timestamp
+              example: "2026-01-18T07:00:00Z"
 
   responses:
     BadRequest:

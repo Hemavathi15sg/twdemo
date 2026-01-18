@@ -1,0 +1,55 @@
+package handlers
+
+import (
+	"errors"
+	"log"
+	"net/http"
+
+	"grademanagement-demo/jira"
+	"grademanagement-demo/utils"
+
+	"github.com/gorilla/mux"
+)
+
+// JiraHandler handles HTTP requests for Jira integration
+type JiraHandler struct {
+	jiraClient *jira.JiraClient
+}
+
+// NewJiraHandler creates a new Jira handler instance
+func NewJiraHandler(client *jira.JiraClient) *JiraHandler {
+	return &JiraHandler{
+		jiraClient: client,
+	}
+}
+
+// GetJiraIssue handles GET /api/jira/issues/{key}
+func (h *JiraHandler) GetJiraIssue(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	issueKey := vars["key"]
+
+	if issueKey == "" {
+		utils.RespondError(w, "issue key is required", http.StatusBadRequest)
+		return
+	}
+
+	issue, err := h.jiraClient.GetIssue(issueKey)
+	if err != nil {
+		log.Printf("Failed to fetch Jira issue %s: %v", issueKey, err)
+
+		// Determine appropriate status code based on error type
+		statusCode := http.StatusInternalServerError
+		if errors.Is(err, jira.ErrIssueNotFound) {
+			statusCode = http.StatusNotFound
+		} else if errors.Is(err, jira.ErrAuthFailed) {
+			statusCode = http.StatusUnauthorized
+		} else if errors.Is(err, jira.ErrMissingConfig) {
+			statusCode = http.StatusInternalServerError
+		}
+
+		utils.RespondError(w, err.Error(), statusCode)
+		return
+	}
+
+	utils.RespondJSON(w, issue, http.StatusOK)
+}

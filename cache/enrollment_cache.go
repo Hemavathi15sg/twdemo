@@ -34,7 +34,7 @@ func NewEnrollmentCache(client *redis.Client) *EnrollmentCache {
 // GetByID retrieves an enrollment from cache by ID
 func (c *EnrollmentCache) GetByID(id int) (*models.Enrollment, error) {
 	key := fmt.Sprintf("%s%d", enrollmentCachePrefix, id)
-	
+
 	data, err := c.client.Get(c.ctx, key).Bytes()
 	if err == redis.Nil {
 		// Cache miss
@@ -57,7 +57,7 @@ func (c *EnrollmentCache) GetByID(id int) (*models.Enrollment, error) {
 // Set stores an enrollment in cache with TTL
 func (c *EnrollmentCache) Set(enrollment *models.Enrollment) error {
 	key := fmt.Sprintf("%s%d", enrollmentCachePrefix, enrollment.ID)
-	
+
 	data, err := json.Marshal(enrollment)
 	if err != nil {
 		log.Printf("Cache marshal error: %v", err)
@@ -76,7 +76,7 @@ func (c *EnrollmentCache) Set(enrollment *models.Enrollment) error {
 // Delete removes an enrollment from cache
 func (c *EnrollmentCache) Delete(id int) error {
 	key := fmt.Sprintf("%s%d", enrollmentCachePrefix, id)
-	
+
 	if err := c.client.Del(c.ctx, key).Err(); err != nil {
 		log.Printf("Redis delete error: %v", err)
 		return err

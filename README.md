@@ -10,6 +10,7 @@ RESTful API for managing student enrollments with Redis caching, comprehensive t
 ## 🚀 Features
 
 - **Complete CRUD Operations** - Create, Read, Update, Delete enrollments
+- **Jira Integration** - Fetch Jira issue details via REST API
 - **Redis Caching** - High-performance caching with 5-minute TTL
 - **Cache Status Tracking** - `X-Cache-Status` header (HIT/MISS/SKIP)
 - **Status Validation** - Only allows: `pending`, `active`, `completed`
@@ -91,6 +92,45 @@ Returns API status and health information.
 | GET | `/api/enrollments/{id}` | Get enrollment by ID | HIT/MISS |
 | PUT | `/api/enrollments/{id}` | Update enrollment | Invalidates |
 | DELETE | `/api/enrollments/{id}` | Delete enrollment | Invalidates |
+
+### Jira Integration
+
+| Method | Endpoint | Description | Authentication |
+|--------|----------|-------------|----------------|
+| GET | `/api/jira/issues/{key}` | Get Jira issue by key | Required |
+
+**Configuration:**
+Set the following environment variables to use Jira integration:
+```bash
+export JIRA_BASE_URL=https://your-domain.atlassian.net
+export JIRA_EMAIL=your-email@example.com
+export JIRA_API_TOKEN=your-api-token
+```
+
+**Example:**
+```bash
+# Fetch issue TEC-16
+curl http://localhost:8080/api/jira/issues/TEC-16
+```
+
+**Response:**
+```json
+{
+  "key": "TEC-16",
+  "fields": {
+    "summary": "Create enrollment feature",
+    "description": "Implement student enrollment API",
+    "status": {
+      "name": "Done"
+    },
+    "issuetype": {
+      "name": "Story"
+    },
+    "created": "2026-01-15T10:00:00.000+0000",
+    "updated": "2026-01-18T07:00:00.000+0000"
+  }
+}
+```
 
 ### Request/Response Examples
 
@@ -308,9 +348,22 @@ twdemo/
 
 ### Environment Variables
 
+**Redis Configuration:**
 ```bash
 export REDIS_ADDR=localhost:6379  # Redis server address (default: localhost:6379)
 ```
+
+**Jira Integration (Optional):**
+```bash
+export JIRA_BASE_URL=https://your-domain.atlassian.net  # Your Jira instance URL
+export JIRA_EMAIL=your-email@example.com               # Your Jira account email
+export JIRA_API_TOKEN=your-api-token                    # Your Jira API token
+```
+
+To generate a Jira API token:
+1. Go to https://id.atlassian.com/manage-profile/security/api-tokens
+2. Click "Create API token"
+3. Copy the token and set it as `JIRA_API_TOKEN`
 
 ### Running with Custom Redis
 
