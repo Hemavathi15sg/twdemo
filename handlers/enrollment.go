@@ -1,218 +1,203 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
-	"time"
+	"strconv"
+
+	"github.com/gorilla/mux"
 
 	"grademanagement-demo/models"
 	"grademanagement-demo/repositories"
 	"grademanagement-demo/usecases"
-
-	"github.com/google/uuid"
-	"github.com/gorilla/mux"
 )
 
-type EnrollmentHTTPHandler struct {
-	svc *usecases.EnrollmentService
+// EnrollmentHandler handles HTTP requests for enrollments
+type EnrollmentHandler struct {
+	service *usecases.EnrollmentService
 }
 
-func NewEnrollmentHTTPHandler(svc *usecases.EnrollmentService) *EnrollmentHTTPHandler {
-	return &EnrollmentHTTPHandler{svc: svc}
+// NewEnrollmentHandler creates a new enrollment handler
+func NewEnrollmentHandler(service *usecases.EnrollmentService) *EnrollmentHandler {
+	return &EnrollmentHandler{service: service}
 }
 
-func (h *EnrollmentHTTPHandler) RegisterRoutes(r *mux.Router) {
-	api := r.PathPrefix("/api").Subrouter()
-	api.HandleFunc("/enrollments", h.create).Methods(http.MethodPost)
-	api.HandleFunc("/enrollments", h.list).Methods(http.MethodGet)
-	api.HandleFunc("/enrollments/{id}", h.get).Methods(http.MethodGet)
-	api.HandleFunc("/enrollments/{id}", h.update).Methods(http.MethodPut)
-	api.HandleFunc("/enrollments/{id}", h.delete).Methods(http.MethodDelete)
+// RegisterRoutes registers enrollment routes
+func (h *EnrollmentHandler) RegisterRoutes(router *mux.Router) {
+	router.HandleFunc("/api/enrollments", h.CreateEnrollment).Methods("POST")
+	router.HandleFunc("/api/enrollments", h.ListEnrollments).Methods("GET")
+	router.HandleFunc("/api/enrollments/{id}", h.GetEnrollment).Methods("GET")
+	router.HandleFunc("/api/enrollments/{id}", h.UpdateEnrollment).Methods("PUT")
+	router.HandleFunc("/api/enrollments/{id}", h.DeleteEnrollment).Methods("DELETE")
 }
 
-type enrollmentRequest struct {
-	StudentID      string  `json:"student_id"`
-	CourseID       string  `json:"course_id"`
-	EnrollmentDate *string `json:"enrollment_date,omitempty"`
-	Status         string  `json:"status"`
-}
-
-type errorResponse struct {
-	Message string `json:"message"`
-}
-
-type enrollmentResponse struct {
-	ID             string    `json:"id"`
-	StudentID      string    `json:"student_id"`
-	CourseID       string    `json:"course_id"`
-	EnrollmentDate time.Time `json:"enrollment_date"`
-	Status         string    `json:"status"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
-}
-
-func (h *EnrollmentHTTPHandler) create(w http.ResponseWriter, r *http.Request) {
-	var req enrollmentRequest
+// CreateEnrollment handles POST /api/enrollments
+func (h *EnrollmentHandler) CreateEnrollment(w http.ResponseWriter, r *http.Request) {
+	var req usecases.CreateEnrollmentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Message: "invalid JSON request"})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "Invalid request body"})
 		return
 	}
-	studentID, err := uuid.Parse(req.StudentID)
+
+	enrollment, err := h.service.CreateEnrollment(r.Context(), &req)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Message: "invalid student_id"})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
 		return
 	}
-	courseID, err := uuid.Parse(req.CourseID)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Message: "invalid course_id"})
-		return
-	}
-	var enrollDate time.Time
-	if req.EnrollmentDate != nil && *req.EnrollmentDate != "" {
-		t, perr := time.Parse(time.RFC3339, *req.EnrollmentDate)
-		if perr != nil {
-			writeJSON(w, http.StatusBadRequest, errorResponse{Message: "invalid enrollment_date (use RFC3339)"})
-			return
-		}
-		enrollDate = t
-	}
-	e := &models.Enrollment{
-		StudentID:      studentID,
-		CourseID:       courseID,
-		EnrollmentDate: enrollDate,
-		Status:         req.Status,
-	}
-	res, err := h.svc.Create(r.Context(), e)
-	if err != nil {
-		if err == usecases.ErrValidation {
-			writeJSON(w, http.StatusBadRequest, errorResponse{Message: "validation failed"})
-			return
-		}
-		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
-		return
-	}
-	writeJSON(w, http.StatusCreated, toResponse(res))
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(toEnrollmentResponse(enrollment))
 }
 
-func (h *EnrollmentHTTPHandler) get(w http.ResponseWriter, r *http.Request) {
+// GetEnrollment handles GET /api/enrollments/{id}
+func (h *EnrollmentHandler) GetEnrollment(w http.ResponseWriter, r *http.Request) {
 	idStr := mux.Vars(r)["id"]
-	id, err := uuid.Parse(idStr)
+	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Message: "invalid id"})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "Invalid enrollment ID"})
 		return
 	}
-	res, err := h.svc.GetByID(context.Background(), id)
+
+	enrollment, err := h.service.GetEnrollmentByID(r.Context(), id)
 	if err != nil {
-		if err == repositories.ErrNotFound {
-			writeJSON(w, http.StatusNotFound, errorResponse{Message: "enrollment not found"})
+		if errors.Is(err, repositories.ErrNotFound) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "Enrollment not found"})
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, toResponse(res))
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(toEnrollmentResponse(enrollment))
 }
 
-func (h *EnrollmentHTTPHandler) list(w http.ResponseWriter, r *http.Request) {
-	res, err := h.svc.List(r.Context())
+// ListEnrollments handles GET /api/enrollments
+func (h *EnrollmentHandler) ListEnrollments(w http.ResponseWriter, r *http.Request) {
+	enrollments, err := h.service.ListEnrollments(r.Context())
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
 		return
 	}
-	out := make([]enrollmentResponse, 0, len(res))
-	for _, e := range res {
-		out = append(out, toResponse(e))
-	}
-	writeJSON(w, http.StatusOK, out)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"data":  toEnrollmentResponses(enrollments),
+		"count": len(enrollments),
+	})
 }
 
-func (h *EnrollmentHTTPHandler) update(w http.ResponseWriter, r *http.Request) {
+// UpdateEnrollment handles PUT /api/enrollments/{id}
+func (h *EnrollmentHandler) UpdateEnrollment(w http.ResponseWriter, r *http.Request) {
 	idStr := mux.Vars(r)["id"]
-	id, err := uuid.Parse(idStr)
+	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Message: "invalid id"})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "Invalid enrollment ID"})
 		return
 	}
-	var req enrollmentRequest
+
+	var req usecases.UpdateEnrollmentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Message: "invalid JSON request"})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "Invalid request body"})
 		return
 	}
-	studentID, sErr := uuid.Parse(req.StudentID)
-	if sErr != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Message: "invalid student_id"})
-		return
-	}
-	courseID, cErr := uuid.Parse(req.CourseID)
-	if cErr != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Message: "invalid course_id"})
-		return
-	}
-	var enrollDate time.Time
-	if req.EnrollmentDate != nil && *req.EnrollmentDate != "" {
-		t, perr := time.Parse(time.RFC3339, *req.EnrollmentDate)
-		if perr != nil {
-			writeJSON(w, http.StatusBadRequest, errorResponse{Message: "invalid enrollment_date (use RFC3339)"})
-			return
-		}
-		enrollDate = t
-	}
-	e := &models.Enrollment{
-		ID:             id,
-		StudentID:      studentID,
-		CourseID:       courseID,
-		EnrollmentDate: enrollDate,
-		Status:         req.Status,
-	}
-	res, err := h.svc.Update(r.Context(), e)
+
+	enrollment, err := h.service.UpdateEnrollment(r.Context(), id, &req)
 	if err != nil {
-		if err == usecases.ErrValidation {
-			writeJSON(w, http.StatusBadRequest, errorResponse{Message: "validation failed"})
+		if errors.Is(err, repositories.ErrNotFound) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "Enrollment not found"})
 			return
 		}
-		if err == repositories.ErrNotFound {
-			writeJSON(w, http.StatusNotFound, errorResponse{Message: "enrollment not found"})
-			return
-		}
-		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, toResponse(res))
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(toEnrollmentResponse(enrollment))
 }
 
-func (h *EnrollmentHTTPHandler) delete(w http.ResponseWriter, r *http.Request) {
+// DeleteEnrollment handles DELETE /api/enrollments/{id}
+func (h *EnrollmentHandler) DeleteEnrollment(w http.ResponseWriter, r *http.Request) {
 	idStr := mux.Vars(r)["id"]
-	id, err := uuid.Parse(idStr)
+	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Message: "invalid id"})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "Invalid enrollment ID"})
 		return
 	}
-	if err := h.svc.Delete(r.Context(), id); err != nil {
-		if err == repositories.ErrNotFound {
-			writeJSON(w, http.StatusNotFound, errorResponse{Message: "enrollment not found"})
+
+	err = h.service.DeleteEnrollment(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, repositories.ErrNotFound) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "Enrollment not found"})
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
 		return
 	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func toResponse(e *models.Enrollment) enrollmentResponse {
+// Response DTOs
+type enrollmentResponse struct {
+	ID             int64  `json:"id"`
+	StudentID      int64  `json:"student_id"`
+	CourseID       int64  `json:"course_id"`
+	EnrollmentDate string `json:"enrollment_date"`
+	Status         string `json:"status"`
+	CreatedAt      string `json:"created_at"`
+	UpdatedAt      string `json:"updated_at"`
+}
+
+// toEnrollmentResponse converts model to response DTO
+func toEnrollmentResponse(e *models.Enrollment) enrollmentResponse {
 	return enrollmentResponse{
-		ID:             e.ID.String(),
-		StudentID:      e.StudentID.String(),
-		CourseID:       e.CourseID.String(),
-		EnrollmentDate: e.EnrollmentDate,
+		ID:             e.ID,
+		StudentID:      e.StudentID,
+		CourseID:       e.CourseID,
+		EnrollmentDate: e.EnrollmentDate.Format("2006-01-02T15:04:05Z"),
 		Status:         e.Status,
-		CreatedAt:      e.CreatedAt,
-		UpdatedAt:      e.UpdatedAt,
+		CreatedAt:      e.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		UpdatedAt:      e.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 	}
 }
 
-func writeJSON(w http.ResponseWriter, status int, v interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+// toEnrollmentResponses converts slice of models to response DTOs
+func toEnrollmentResponses(enrollments []*models.Enrollment) []enrollmentResponse {
+	responses := make([]enrollmentResponse, len(enrollments))
+	for i, e := range enrollments {
+		responses[i] = toEnrollmentResponse(e)
+	}
+	return responses
 }

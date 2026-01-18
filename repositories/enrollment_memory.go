@@ -1,72 +1,81 @@
 package repositories
 
 import (
-    "context"
-    "sync"
+	"context"
+	"sync"
 
-    "grademanagement-demo/models"
-    "github.com/google/uuid"
+	"grademanagement-demo/models"
 )
 
-// InMemoryEnrollmentRepository provides a thread-safe in-memory storage for enrollments
+// InMemoryEnrollmentRepository provides thread-safe in-memory storage for enrollments
 type InMemoryEnrollmentRepository struct {
-    mu         sync.RWMutex
-    store      map[uuid.UUID]*models.Enrollment
+	mu     sync.RWMutex
+	store  map[int64]*models.Enrollment
+	nextID int64
 }
 
+// NewInMemoryEnrollmentRepository initializes a new in-memory repository with auto-incrementing IDs
 func NewInMemoryEnrollmentRepository() *InMemoryEnrollmentRepository {
-    return &InMemoryEnrollmentRepository{
-        store: make(map[uuid.UUID]*models.Enrollment),
-    }
+	return &InMemoryEnrollmentRepository{
+		store:  make(map[int64]*models.Enrollment),
+		nextID: 1,
+	}
 }
 
+// Create adds a new enrollment and assigns an auto-incremented ID
 func (r *InMemoryEnrollmentRepository) Create(ctx context.Context, e *models.Enrollment) (*models.Enrollment, error) {
-    r.mu.Lock()
-    defer r.mu.Unlock()
-    r.store[e.ID] = e
-    // return a copy to avoid external mutation
-    copy := *e
-    return &copy, nil
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e.ID = r.nextID
+	r.nextID++
+	r.store[e.ID] = e
+	// Return a copy to prevent external mutation
+	copy := *e
+	return &copy, nil
 }
 
-func (r *InMemoryEnrollmentRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Enrollment, error) {
-    r.mu.RLock()
-    defer r.mu.RUnlock()
-    if v, ok := r.store[id]; ok {
-        copy := *v
-        return &copy, nil
-    }
-    return nil, ErrNotFound
+// GetByID retrieves an enrollment by ID
+func (r *InMemoryEnrollmentRepository) GetByID(ctx context.Context, id int64) (*models.Enrollment, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if v, ok := r.store[id]; ok {
+		copy := *v
+		return &copy, nil
+	}
+	return nil, ErrNotFound
 }
 
+// Update modifies an existing enrollment
 func (r *InMemoryEnrollmentRepository) Update(ctx context.Context, e *models.Enrollment) (*models.Enrollment, error) {
-    r.mu.Lock()
-    defer r.mu.Unlock()
-    if _, ok := r.store[e.ID]; !ok {
-        return nil, ErrNotFound
-    }
-    r.store[e.ID] = e
-    copy := *e
-    return &copy, nil
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.store[e.ID]; !ok {
+		return nil, ErrNotFound
+	}
+	r.store[e.ID] = e
+	copy := *e
+	return &copy, nil
 }
 
-func (r *InMemoryEnrollmentRepository) Delete(ctx context.Context, id uuid.UUID) error {
-    r.mu.Lock()
-    defer r.mu.Unlock()
-    if _, ok := r.store[id]; !ok {
-        return ErrNotFound
-    }
-    delete(r.store, id)
-    return nil
+// Delete removes an enrollment by ID
+func (r *InMemoryEnrollmentRepository) Delete(ctx context.Context, id int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.store[id]; !ok {
+		return ErrNotFound
+	}
+	delete(r.store, id)
+	return nil
 }
 
+// List returns all enrollments
 func (r *InMemoryEnrollmentRepository) List(ctx context.Context) ([]*models.Enrollment, error) {
-    r.mu.RLock()
-    defer r.mu.RUnlock()
-    res := make([]*models.Enrollment, 0, len(r.store))
-    for _, v := range r.store {
-        copy := *v
-        res = append(res, &copy)
-    }
-    return res, nil
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	result := make([]*models.Enrollment, 0, len(r.store))
+	for _, v := range r.store {
+		copy := *v
+		result = append(result, &copy)
+	}
+	return result, nil
 }

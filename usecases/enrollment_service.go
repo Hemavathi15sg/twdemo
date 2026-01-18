@@ -1,76 +1,142 @@
 package usecases
 
 import (
-    "context"
-    "errors"
-    "time"
+	"context"
+	"fmt"
+	"time"
 
-    "grademanagement-demo/models"
-    "grademanagement-demo/repositories"
-    "github.com/google/uuid"
+	"grademanagement-demo/models"
+	"grademanagement-demo/repositories"
 )
 
-// ErrValidation indicates the input failed business rules
-var ErrValidation = errors.New("validation error")
-
-var allowedStatuses = map[string]struct{}{
-    "pending":  {},
-    "active":   {},
-    "completed":{},
-}
-
+// EnrollmentService handles business logic for enrollments
 type EnrollmentService struct {
-    repo repositories.EnrollmentRepository
+	repo repositories.EnrollmentRepository
 }
 
+// NewEnrollmentService creates a new enrollment service
 func NewEnrollmentService(repo repositories.EnrollmentRepository) *EnrollmentService {
-    return &EnrollmentService{repo: repo}
+	return &EnrollmentService{repo: repo}
 }
 
-func (s *EnrollmentService) Create(ctx context.Context, e *models.Enrollment) (*models.Enrollment, error) {
-    if err := validateEnrollment(e); err != nil {
-        return nil, err
-    }
-    now := time.Now().UTC()
-    e.ID = uuid.New()
-    if e.EnrollmentDate.IsZero() {
-        e.EnrollmentDate = now
-    }
-    e.CreatedAt = now
-    e.UpdatedAt = now
-    return s.repo.Create(ctx, e)
+// CreateEnrollment creates a new enrollment with validation
+func (s *EnrollmentService) CreateEnrollment(ctx context.Context, req *CreateEnrollmentRequest) (*models.Enrollment, error) {
+	// Validate input
+	if err := s.validateEnrollmentRequest(req); err != nil {
+		return nil, err
+	}
+
+	now := time.Now().UTC()
+	enrollment := &models.Enrollment{
+		StudentID:      req.StudentID,
+		CourseID:       req.CourseID,
+		EnrollmentDate: req.EnrollmentDate,
+		Status:         req.Status,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+
+	return s.repo.Create(ctx, enrollment)
 }
 
-func (s *EnrollmentService) GetByID(ctx context.Context, id uuid.UUID) (*models.Enrollment, error) {
-    return s.repo.GetByID(ctx, id)
+// GetEnrollmentByID retrieves an enrollment by ID
+func (s *EnrollmentService) GetEnrollmentByID(ctx context.Context, id int64) (*models.Enrollment, error) {
+	if id <= 0 {
+		return nil, fmt.Errorf("invalid enrollment ID: %d", id)
+	}
+	return s.repo.GetByID(ctx, id)
 }
 
-func (s *EnrollmentService) Update(ctx context.Context, e *models.Enrollment) (*models.Enrollment, error) {
-    if e.ID == uuid.Nil {
-        return nil, ErrValidation
-    }
-    if err := validateEnrollment(e); err != nil {
-        return nil, err
-    }
-    // Preserve CreatedAt if present, ensure UpdatedAt
-    e.UpdatedAt = time.Now().UTC()
-    return s.repo.Update(ctx, e)
+// UpdateEnrollment updates an existing enrollment
+func (s *EnrollmentService) UpdateEnrollment(ctx context.Context, id int64, req *UpdateEnrollmentRequest) (*models.Enrollment, error) {
+	if id <= 0 {
+		return nil, fmt.Errorf("invalid enrollment ID: %d", id)
+	}
+
+	// Validate input
+	if err := s.validateUpdateRequest(req); err != nil {
+		return nil, err
+	}
+
+	// Get existing enrollment
+	enrollment, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update fields
+	if req.Status != "" {
+		enrollment.Status = req.Status
+	}
+	if req.EnrollmentDate != nil {
+		enrollment.EnrollmentDate = *req.EnrollmentDate
+	}
+	enrollment.UpdatedAt = time.Now().UTC()
+
+	return s.repo.Update(ctx, enrollment)
 }
 
-func (s *EnrollmentService) Delete(ctx context.Context, id uuid.UUID) error {
-    return s.repo.Delete(ctx, id)
+// DeleteEnrollment deletes an enrollment
+func (s *EnrollmentService) DeleteEnrollment(ctx context.Context, id int64) error {
+	if id <= 0 {
+		return fmt.Errorf("invalid enrollment ID: %d", id)
+	}
+	return s.repo.Delete(ctx, id)
 }
 
-func (s *EnrollmentService) List(ctx context.Context) ([]*models.Enrollment, error) {
-    return s.repo.List(ctx)
+// ListEnrollments lists all enrollments
+func (s *EnrollmentService) ListEnrollments(ctx context.Context) ([]*models.Enrollment, error) {
+	return s.repo.List(ctx)
 }
 
-func validateEnrollment(e *models.Enrollment) error {
-    if e.StudentID == uuid.Nil || e.CourseID == uuid.Nil || e.Status == "" {
-        return ErrValidation
-    }
-    if _, ok := allowedStatuses[e.Status]; !ok {
-        return ErrValidation
-    }
-    return nil
+// validateEnrollmentRequest validates create request
+func (s *EnrollmentService) validateEnrollmentRequest(req *CreateEnrollmentRequest) error {
+	if req.StudentID <= 0 {
+		return fmt.Errorf("student_id must be positive")
+	}
+	if req.CourseID <= 0 {
+		return fmt.Errorf("course_id must be positive")
+	}
+	if req.Status == "" {
+		return fmt.Errorf("status is required")
+	}
+	if !isValidStatus(req.Status) {
+		return fmt.Errorf("status must be one of: pending, active, completed")
+	}
+	if req.EnrollmentDate.IsZero() {
+		return fmt.Errorf("enrollment_date is required")
+	}
+	return nil
+}
+
+// validateUpdateRequest validates update request
+func (s *EnrollmentService) validateUpdateRequest(req *UpdateEnrollmentRequest) error {
+	if req.Status != "" && !isValidStatus(req.Status) {
+		return fmt.Errorf("status must be one of: pending, active, completed")
+	}
+	return nil
+}
+
+// isValidStatus checks if status is valid
+func isValidStatus(status string) bool {
+	validStatuses := map[string]bool{
+		"pending":   true,
+		"active":    true,
+		"completed": true,
+	}
+	return validStatuses[status]
+}
+
+// CreateEnrollmentRequest is the DTO for creating enrollments
+type CreateEnrollmentRequest struct {
+	StudentID      int64     `json:"student_id"`
+	CourseID       int64     `json:"course_id"`
+	EnrollmentDate time.Time `json:"enrollment_date"`
+	Status         string    `json:"status"`
+}
+
+// UpdateEnrollmentRequest is the DTO for updating enrollments
+type UpdateEnrollmentRequest struct {
+	Status         string     `json:"status,omitempty"`
+	EnrollmentDate *time.Time `json:"enrollment_date,omitempty"`
 }

@@ -22,11 +22,16 @@ func main() {
 		fmt.Fprintf(w, `{"message": "Grade Management API - Ready for AI delegation!", "status": "healthy"}`)
 	}).Methods("GET")
 
-	// Wire enrollment feature under /api prefix
+	// Wire enrollment feature with clean architecture layers
+	// Layer 1: Repository (Data Access)
 	repo := repositories.NewInMemoryEnrollmentRepository()
-	svc := usecases.NewEnrollmentService(repo)
-	h := handlers.NewEnrollmentHTTPHandler(svc)
-	h.RegisterRoutes(r)
+
+	// Layer 2: Service (Business Logic)
+	service := usecases.NewEnrollmentService(repo)
+
+	// Layer 3: Handler (HTTP Delivery)
+	handler := handlers.NewEnrollmentHandler(service)
+	handler.RegisterRoutes(r)
 
 	p := os.Getenv("PORT")
 	if p == "" {
@@ -34,7 +39,7 @@ func main() {
 	}
 	port := ":" + p
 	fmt.Printf("🚀 Grade Management API starting on port %s\n", port)
-	fmt.Println("📋 Ready for Copilot Agent delegation!")
+	fmt.Println("📋 Enrollment API ready at /api/enrollments")
 
 	log.Fatal(http.ListenAndServe(port, r))
 }
