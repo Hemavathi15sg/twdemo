@@ -2,11 +2,19 @@ package jira
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"time"
+)
+
+// Custom error types
+var (
+	ErrIssueNotFound = errors.New("issue not found")
+	ErrAuthFailed    = errors.New("authentication failed")
+	ErrMissingConfig = errors.New("missing configuration")
 )
 
 // JiraIssue represents a Jira issue
@@ -54,13 +62,13 @@ func NewJiraClient() *JiraClient {
 // GetIssue retrieves a Jira issue by key
 func (c *JiraClient) GetIssue(issueKey string) (*JiraIssue, error) {
 	if c.BaseURL == "" {
-		return nil, fmt.Errorf("JIRA_BASE_URL environment variable not set")
+		return nil, fmt.Errorf("%w: JIRA_BASE_URL environment variable not set", ErrMissingConfig)
 	}
 	if c.Token == "" {
-		return nil, fmt.Errorf("JIRA_API_TOKEN environment variable not set")
+		return nil, fmt.Errorf("%w: JIRA_API_TOKEN environment variable not set", ErrMissingConfig)
 	}
 	if c.Email == "" {
-		return nil, fmt.Errorf("JIRA_EMAIL environment variable not set")
+		return nil, fmt.Errorf("%w: JIRA_EMAIL environment variable not set", ErrMissingConfig)
 	}
 
 	url := fmt.Sprintf("%s/rest/api/3/issue/%s", c.BaseURL, issueKey)
@@ -84,13 +92,16 @@ func (c *JiraClient) GetIssue(issueKey string) (*JiraIssue, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("issue %s not found", issueKey)
+		return nil, fmt.Errorf("%w: %s", ErrIssueNotFound, issueKey)
 	}
 	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, fmt.Errorf("authentication failed: check JIRA_EMAIL and JIRA_API_TOKEN")
+		return nil, fmt.Errorf("%w: check JIRA_EMAIL and JIRA_API_TOKEN", ErrAuthFailed)
 	}
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, fmt.Errorf("unexpected status code %d (failed to read response body: %w)", resp.StatusCode, readErr)
+		}
 		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(body))
 	}
 

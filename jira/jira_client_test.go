@@ -5,6 +5,7 @@ package jira
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -44,8 +45,8 @@ func TestJiraClient_GetIssue(t *testing.T) {
 			t.Error("Expected error when environment variables are not set")
 		}
 
-		if err.Error() != "JIRA_BASE_URL environment variable not set" {
-			t.Errorf("Expected 'JIRA_BASE_URL environment variable not set', got '%s'", err.Error())
+		if !errors.Is(err, ErrMissingConfig) {
+			t.Errorf("Expected ErrMissingConfig, got '%v'", err)
 		}
 	})
 
@@ -134,8 +135,8 @@ func TestJiraClient_GetIssue(t *testing.T) {
 			t.Error("Expected error for non-existent issue")
 		}
 
-		if err.Error() != "issue NOTFOUND-1 not found" {
-			t.Errorf("Expected 'issue NOTFOUND-1 not found', got '%s'", err.Error())
+		if !errors.Is(err, ErrIssueNotFound) {
+			t.Errorf("Expected ErrIssueNotFound, got '%v'", err)
 		}
 	})
 
@@ -163,8 +164,8 @@ func TestJiraClient_GetIssue(t *testing.T) {
 			t.Error("Expected error for unauthorized access")
 		}
 
-		if err.Error() != "authentication failed: check JIRA_EMAIL and JIRA_API_TOKEN" {
-			t.Errorf("Expected authentication error, got '%s'", err.Error())
+		if !errors.Is(err, ErrAuthFailed) {
+			t.Errorf("Expected ErrAuthFailed, got '%v'", err)
 		}
 	})
 }

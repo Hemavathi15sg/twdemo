@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"log"
 	"net/http"
 
@@ -36,12 +37,14 @@ func (h *JiraHandler) GetJiraIssue(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Failed to fetch Jira issue %s: %v", issueKey, err)
 
-		// Determine appropriate status code based on error
+		// Determine appropriate status code based on error type
 		statusCode := http.StatusInternalServerError
-		if err.Error() == "issue "+issueKey+" not found" {
+		if errors.Is(err, jira.ErrIssueNotFound) {
 			statusCode = http.StatusNotFound
-		} else if err.Error() == "authentication failed: check JIRA_EMAIL and JIRA_API_TOKEN" {
+		} else if errors.Is(err, jira.ErrAuthFailed) {
 			statusCode = http.StatusUnauthorized
+		} else if errors.Is(err, jira.ErrMissingConfig) {
+			statusCode = http.StatusInternalServerError
 		}
 
 		utils.RespondError(w, err.Error(), statusCode)
