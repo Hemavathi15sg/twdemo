@@ -2,12 +2,13 @@ openapi: 3.0.3
 info:
   title: Grade Management API
   description: |-
-    RESTful API for managing student enrollments with Redis caching support.
+    RESTful API for managing student enrollments and grades with Redis caching support.
     
-    This API provides comprehensive CRUD operations for enrollments with:
+    This API provides comprehensive CRUD operations for enrollments and grades with:
     - Redis-backed caching with 5-minute TTL
     - Cache status tracking via X-Cache-Status header
-    - Status validation (pending/active/completed only)
+    - Status validation for enrollments (pending/active/completed) and grades (draft/submitted/final)
+    - Grade validation (A+, A, A-, B+, B, B-, C+, C, C-, D+, D, D-, F)
     - Thread-safe in-memory storage
     
     **Cache Behavior:**
@@ -23,6 +24,8 @@ servers:
 tags:
   - name: enrollments
     description: Enrollment management operations
+  - name: grades
+    description: Grade management operations
   - name: health
     description: Health check endpoints
 
@@ -200,6 +203,158 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /api/grades:
+    get:
+      tags:
+        - grades
+      summary: List all grades
+      description: Retrieves all grades from the system (cache not used for list operations)
+      responses:
+        '200':
+          description: Successful response with grade list
+          headers:
+            X-Cache-Status:
+              description: Cache status indicator
+              schema:
+                type: string
+                enum: [SKIP]
+                example: SKIP
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Grade'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - grades
+      summary: Create a new grade
+      description: Creates a new grade with validation and caches the result
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GradeInput'
+      responses:
+        '201':
+          description: Grade created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Grade'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/grades/{id}:
+    get:
+      tags:
+        - grades
+      summary: Get grade by ID
+      description: |-
+        Retrieves a specific grade by ID with cache-aside pattern:
+        1. Check Redis cache first
+        2. On cache miss, fetch from storage
+        3. Cache the result for future requests (5-minute TTL)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Grade ID
+          schema:
+            type: integer
+            minimum: 1
+            example: 1
+      responses:
+        '200':
+          description: Successful response
+          headers:
+            X-Cache-Status:
+              description: Indicates if response was served from cache
+              schema:
+                type: string
+                enum: [HIT, MISS]
+                example: HIT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Grade'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags:
+        - grades
+      summary: Update a grade
+      description: |-
+        Updates an existing grade and invalidates cache.
+        All fields are optional - only provided fields will be updated.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Grade ID
+          schema:
+            type: integer
+            minimum: 1
+            example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GradeInput'
+      responses:
+        '200':
+          description: Grade updated successfully (cache invalidated)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Grade'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - grades
+      summary: Delete a grade
+      description: Deletes a grade and invalidates its cache entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Grade ID
+          schema:
+            type: integer
+            minimum: 1
+            example: 1
+      responses:
+        '200':
+          description: Grade deleted successfully (cache invalidated)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   schemas:
     Enrollment:
@@ -276,6 +431,92 @@ components:
           description: Status of the enrollment. Must be one of the allowed values.
           example: "active"
 
+    Grade:
+      type: object
+      required:
+        - id
+        - student_id
+        - course_id
+        - grade
+        - grade_date
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+          description: Unique identifier for the grade
+          example: 1
+        student_id:
+          type: integer
+          description: ID of the student
+          minimum: 1
+          example: 123
+        course_id:
+          type: integer
+          description: ID of the course
+          minimum: 1
+          example: 456
+        grade:
+          type: string
+          enum: [A+, A, A-, B+, B, B-, C+, C, C-, D+, D, D-, F]
+          description: Letter grade assigned
+          example: "A"
+        grade_date:
+          type: string
+          format: date-time
+          description: Date when the grade was assigned
+          example: "2026-01-09T10:30:00Z"
+        status:
+          type: string
+          enum: [draft, submitted, final]
+          description: Current status of the grade
+          example: "final"
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the grade was created
+          example: "2026-01-09T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when the grade was last updated
+          example: "2026-01-09T10:30:00Z"
+
+    GradeInput:
+      type: object
+      required:
+        - student_id
+        - course_id
+        - grade
+        - status
+      properties:
+        student_id:
+          type: integer
+          description: ID of the student
+          minimum: 1
+          example: 123
+        course_id:
+          type: integer
+          description: ID of the course
+          minimum: 1
+          example: 456
+        grade:
+          type: string
+          enum: [A+, A, A-, B+, B, B-, C+, C, C-, D+, D, D-, F]
+          description: Letter grade to assign. Must be one of the allowed values.
+          example: "A"
+        grade_date:
+          type: string
+          format: date
+          description: Optional grade date (YYYY-MM-DD). Defaults to current date if not provided.
+          example: "2026-01-09"
+        status:
+          type: string
+          enum: [draft, submitted, final]
+          description: Status of the grade. Must be one of the allowed values.
+          example: "final"
+
     ErrorResponse:
       type: object
       required:
@@ -308,24 +549,36 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           examples:
-            invalidStatus:
+            invalidEnrollmentStatus:
               value:
                 error: "invalid status: must be one of pending, active, or completed"
+            invalidGradeStatus:
+              value:
+                error: "invalid status: must be one of draft, submitted, or final"
+            invalidGradeValue:
+              value:
+                error: "invalid grade: must be one of A+, A, A-, B+, B, B-, C+, C, C-, D+, D, D-, F"
             invalidStudentId:
               value:
                 error: "student_id must be a positive integer"
             invalidCourseId:
               value:
                 error: "course_id must be a positive integer"
-            invalidDate:
+            invalidEnrollmentDate:
               value:
                 error: "invalid enrollment_date format: use YYYY-MM-DD"
+            invalidGradeDate:
+              value:
+                error: "invalid grade_date format: use YYYY-MM-DD"
             invalidBody:
               value:
                 error: "invalid request body"
-            invalidId:
+            invalidEnrollmentId:
               value:
                 error: "invalid enrollment ID"
+            invalidGradeId:
+              value:
+                error: "invalid grade ID"
 
     NotFound:
       description: Resource not found
@@ -333,8 +586,13 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
-          example:
-            error: "enrollment not found"
+          examples:
+            enrollmentNotFound:
+              value:
+                error: "enrollment not found"
+            gradeNotFound:
+              value:
+                error: "grade not found"
 
     InternalServerError:
       description: Internal server error
