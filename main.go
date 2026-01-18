@@ -42,21 +42,21 @@ func main() {
 	repo := repository.NewEnrollmentRepository()
 	enrollmentCache := cache.NewEnrollmentCache(redisClient)
 	enrollmentHandler := handlers.NewEnrollmentHandler(repo, enrollmentCache)
-	
+
 	// Initialize Jira client and handler
 	jiraClient := jira.NewJiraClient()
 	jiraHandler := handlers.NewJiraHandler(jiraClient)
 
 	// API routes with /api prefix
 	api := r.PathPrefix("/api").Subrouter()
-	
+
 	// Enrollment endpoints
 	api.HandleFunc("/enrollments", enrollmentHandler.CreateEnrollment).Methods("POST")
 	api.HandleFunc("/enrollments", enrollmentHandler.ListEnrollments).Methods("GET")
 	api.HandleFunc("/enrollments/{id}", enrollmentHandler.GetEnrollment).Methods("GET")
 	api.HandleFunc("/enrollments/{id}", enrollmentHandler.UpdateEnrollment).Methods("PUT")
 	api.HandleFunc("/enrollments/{id}", enrollmentHandler.DeleteEnrollment).Methods("DELETE")
-	
+
 	// Jira integration endpoint
 	api.HandleFunc("/jira/issues/{key}", jiraHandler.GetJiraIssue).Methods("GET")
 

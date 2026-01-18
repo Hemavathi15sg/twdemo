@@ -391,12 +391,12 @@ components:
               type: string
               format: date-time
               description: Creation timestamp
-              example: "2026-01-15T10:00:00.000+0000"
+              example: "2026-01-15T10:00:00Z"
             updated:
               type: string
               format: date-time
               description: Last update timestamp
-              example: "2026-01-18T07:00:00.000+0000"
+              example: "2026-01-18T07:00:00Z"
 
   responses:
     BadRequest:

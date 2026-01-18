@@ -34,7 +34,7 @@ func (h *JiraHandler) GetJiraIssue(w http.ResponseWriter, r *http.Request) {
 	issue, err := h.jiraClient.GetIssue(issueKey)
 	if err != nil {
 		log.Printf("Failed to fetch Jira issue %s: %v", issueKey, err)
-		
+
 		// Determine appropriate status code based on error
 		statusCode := http.StatusInternalServerError
 		if err.Error() == "issue "+issueKey+" not found" {
@@ -42,7 +42,7 @@ func (h *JiraHandler) GetJiraIssue(w http.ResponseWriter, r *http.Request) {
 		} else if err.Error() == "authentication failed: check JIRA_EMAIL and JIRA_API_TOKEN" {
 			statusCode = http.StatusUnauthorized
 		}
-		
+
 		respondError(w, err.Error(), statusCode)
 		return
 	}
