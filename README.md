@@ -32,6 +32,8 @@ curl http://localhost:8080
 #### TEC16 Import Feature
 - `POST /api/enrollments/import/tec16` - Import enrollments from TEC16 format file
 
+**Security:** File paths are restricted to the working directory (configurable via `TEC16_DATA_DIR` environment variable). Directory traversal attempts are blocked.
+
 **TEC16 Format Example:**
 ```json
 {
@@ -58,7 +60,7 @@ curl -X POST http://localhost:8080/api/enrollments/import/tec16 \
 
 **Response:**
 - `201 Created` - All records imported successfully
-- `206 Partial Content` - Some records imported, some failed
+- `200 OK` - Some records imported, some failed (partial success)
 - `400 Bad Request` - All records failed or invalid file
 
 ### 🎯 Session 1 AI Agent Plan

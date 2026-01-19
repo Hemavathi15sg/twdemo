@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -23,15 +25,29 @@ type TEC16Enrollment struct {
 }
 
 // TEC16Reader handles reading and parsing TEC16 format files
-type TEC16Reader struct{}
+type TEC16Reader struct {
+	allowedDir string
+}
 
 // NewTEC16Reader creates a new TEC16 reader
 func NewTEC16Reader() *TEC16Reader {
-	return &TEC16Reader{}
+	// Default to current working directory if not set
+	allowedDir := os.Getenv("TEC16_DATA_DIR")
+	if allowedDir == "" {
+		allowedDir, _ = os.Getwd()
+	}
+	return &TEC16Reader{
+		allowedDir: allowedDir,
+	}
 }
 
 // ReadFile reads and parses a TEC16 format file
 func (r *TEC16Reader) ReadFile(filepath string) (*TEC16Data, error) {
+	// Validate file path to prevent directory traversal
+	if err := r.validateFilePath(filepath); err != nil {
+		return nil, err
+	}
+
 	// Read file
 	data, err := os.ReadFile(filepath)
 	if err != nil {
@@ -50,6 +66,33 @@ func (r *TEC16Reader) ReadFile(filepath string) (*TEC16Data, error) {
 	}
 
 	return &tec16Data, nil
+}
+
+// validateFilePath validates that the file path is within allowed directory
+func (r *TEC16Reader) validateFilePath(path string) error {
+	// Clean the path to resolve any .. or .
+	cleanPath, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("invalid file path: %w", err)
+	}
+
+	// Get absolute allowed directory
+	absAllowedDir, err := filepath.Abs(r.allowedDir)
+	if err != nil {
+		return fmt.Errorf("failed to resolve allowed directory: %w", err)
+	}
+
+	// Check if the file is within the allowed directory
+	if !strings.HasPrefix(cleanPath, absAllowedDir) {
+		return fmt.Errorf("file path not allowed: must be within %s", absAllowedDir)
+	}
+
+	// Additional security check: prevent access to hidden files/directories
+	if strings.Contains(cleanPath, "/.") {
+		return fmt.Errorf("access to hidden files is not allowed")
+	}
+
+	return nil
 }
 
 // ToCreateEnrollmentRequests converts TEC16 enrollments to CreateEnrollmentRequest objects

@@ -272,7 +272,7 @@ func (h *EnrollmentHandler) ImportFromTEC16(w http.ResponseWriter, r *http.Reque
 	if len(failed) > 0 && len(created) == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 	} else if len(failed) > 0 {
-		w.WriteHeader(http.StatusPartialContent)
+		w.WriteHeader(http.StatusOK)
 	} else {
 		w.WriteHeader(http.StatusCreated)
 	}
