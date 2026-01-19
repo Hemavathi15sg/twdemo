@@ -1,0 +1,24 @@
+{
+  "format": "tec16",
+  "version": "1.0",
+  "enrollments": [
+    {
+      "student_id": 1001,
+      "course_id": 101,
+      "status": "active",
+      "enrollment_date": "2024-01-15T10:00:00Z"
+    },
+    {
+      "student_id": 1002,
+      "course_id": 102,
+      "status": "pending",
+      "enrollment_date": "2024-01-16T10:00:00Z"
+    },
+    {
+      "student_id": 1003,
+      "course_id": 101,
+      "status": "active",
+      "enrollment_date": "2024-01-17T10:00:00Z"
+    }
+  ]
+}
