@@ -34,7 +34,12 @@ func NewTEC16Reader() *TEC16Reader {
 	// Default to current working directory if not set
 	allowedDir := os.Getenv("TEC16_DATA_DIR")
 	if allowedDir == "" {
-		allowedDir, _ = os.Getwd()
+		var err error
+		allowedDir, err = os.Getwd()
+		if err != nil {
+			// Fallback to a safe default if we can't get working directory
+			allowedDir = "/var/lib/tec16"
+		}
 	}
 	return &TEC16Reader{
 		allowedDir: allowedDir,
@@ -82,13 +87,21 @@ func (r *TEC16Reader) validateFilePath(path string) error {
 		return fmt.Errorf("failed to resolve allowed directory: %w", err)
 	}
 
-	// Check if the file is within the allowed directory
-	if !strings.HasPrefix(cleanPath, absAllowedDir) {
+	// Use filepath.Rel to properly check if cleanPath is within absAllowedDir
+	// This handles cross-platform path separators correctly
+	relPath, err := filepath.Rel(absAllowedDir, cleanPath)
+	if err != nil {
+		return fmt.Errorf("invalid file path: %w", err)
+	}
+
+	// If the relative path starts with "..", it's outside the allowed directory
+	if strings.HasPrefix(relPath, "..") || filepath.IsAbs(relPath) {
 		return fmt.Errorf("file path not allowed: must be within %s", absAllowedDir)
 	}
 
-	// Additional security check: prevent access to hidden files/directories
-	if strings.Contains(cleanPath, "/.") {
+	// Check if filename (not full path) starts with a dot (hidden file)
+	filename := filepath.Base(cleanPath)
+	if strings.HasPrefix(filename, ".") {
 		return fmt.Errorf("access to hidden files is not allowed")
 	}
 
