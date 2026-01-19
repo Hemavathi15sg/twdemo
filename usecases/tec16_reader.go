@@ -37,8 +37,8 @@ func NewTEC16Reader() *TEC16Reader {
 		var err error
 		allowedDir, err = os.Getwd()
 		if err != nil {
-			// Fallback to a safe default if we can't get working directory
-			allowedDir = "/var/lib/tec16"
+			// Fallback to current directory (relative) if we can't get absolute path
+			allowedDir = "."
 		}
 	}
 	return &TEC16Reader{
