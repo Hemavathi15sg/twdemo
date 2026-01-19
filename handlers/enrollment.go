@@ -15,12 +15,16 @@ import (
 
 // EnrollmentHandler handles HTTP requests for enrollments
 type EnrollmentHandler struct {
-	service *usecases.EnrollmentService
+	service    *usecases.EnrollmentService
+	tec16Reader *usecases.TEC16Reader
 }
 
 // NewEnrollmentHandler creates a new enrollment handler
 func NewEnrollmentHandler(service *usecases.EnrollmentService) *EnrollmentHandler {
-	return &EnrollmentHandler{service: service}
+	return &EnrollmentHandler{
+		service:    service,
+		tec16Reader: usecases.NewTEC16Reader(),
+	}
 }
 
 // RegisterRoutes registers enrollment routes
@@ -30,6 +34,7 @@ func (h *EnrollmentHandler) RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/api/enrollments/{id}", h.GetEnrollment).Methods("GET")
 	router.HandleFunc("/api/enrollments/{id}", h.UpdateEnrollment).Methods("PUT")
 	router.HandleFunc("/api/enrollments/{id}", h.DeleteEnrollment).Methods("DELETE")
+	router.HandleFunc("/api/enrollments/import/tec16", h.ImportFromTEC16).Methods("POST")
 }
 
 // CreateEnrollment handles POST /api/enrollments
@@ -201,3 +206,76 @@ func toEnrollmentResponses(enrollments []*models.Enrollment) []enrollmentRespons
 	}
 	return responses
 }
+
+// ImportFromTEC16 handles POST /api/enrollments/import/tec16
+func (h *EnrollmentHandler) ImportFromTEC16(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Filepath string `json:"filepath"`
+	}
+	
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "Invalid request body"})
+		return
+	}
+
+	if req.Filepath == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "filepath is required"})
+		return
+	}
+
+	// Read TEC16 file
+	tec16Data, err := h.tec16Reader.ReadFile(req.Filepath)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
+		return
+	}
+
+	// Convert to enrollment requests
+	requests := h.tec16Reader.ToCreateEnrollmentRequests(tec16Data)
+
+	// Create enrollments
+	var created []*models.Enrollment
+	var failed []map[string]interface{}
+
+	for i, req := range requests {
+		enrollment, err := h.service.CreateEnrollment(r.Context(), req)
+		if err != nil {
+			failed = append(failed, map[string]interface{}{
+				"index":  i,
+				"error":  err.Error(),
+				"record": req,
+			})
+			continue
+		}
+		created = append(created, enrollment)
+	}
+
+	// Prepare response
+	response := map[string]interface{}{
+		"total_records":   len(requests),
+		"created_count":   len(created),
+		"failed_count":    len(failed),
+		"created":         toEnrollmentResponses(created),
+	}
+
+	if len(failed) > 0 {
+		response["failed"] = failed
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if len(failed) > 0 && len(created) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+	} else if len(failed) > 0 {
+		w.WriteHeader(http.StatusPartialContent)
+	} else {
+		w.WriteHeader(http.StatusCreated)
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
