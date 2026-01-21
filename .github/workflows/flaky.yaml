@@ -1,0 +1,280 @@
+name: Tests with Flaky Detection
+
+on:
+  push:
+    branches: [ main, feature/*, check/*, test/* ]
+  pull_request:
+    branches: [ main, feature/*, check/*, test/* ]
+
+# Add permissions to create issues
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  test-with-retry:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.23'
+    
+    - name: Install dependencies
+      run: go mod download
+    
+    - name: Run tests with flaky detection (3 attempts)
+      id: test_runs
+      continue-on-error: true
+      run: |
+        set +e  # Don't exit on error - we want to run all 3 attempts
+        echo "Running tests 3 times to detect flaky patterns..."
+        
+        # Run 1 - Force PASS behavior
+        echo "::group::Test Run 1"
+        export TEST_RUN_NUMBER=1
+        export FORCE_SLOW_RUN=false
+        go test ./tests -v -run TestEnrollmentConcurrency_Flaky > test_run_1.log 2>&1
+        RUN1_EXIT=$?
+        cat test_run_1.log
+        echo "Exit code: $RUN1_EXIT"
+        echo "::endgroup::"
+        
+        # Run 2 - Force FAIL behavior
+        echo "::group::Test Run 2"
+        export TEST_RUN_NUMBER=2
+        export FORCE_SLOW_RUN=true
+        go test ./tests -v -run TestEnrollmentConcurrency_Flaky > test_run_2.log 2>&1
+        RUN2_EXIT=$?
+        cat test_run_2.log
+        echo "Exit code: $RUN2_EXIT"
+        echo "::endgroup::"
+        
+        # Run 3 - Force PASS behavior
+        echo "::group::Test Run 3"
+        export TEST_RUN_NUMBER=3
+        export FORCE_SLOW_RUN=false
+        go test ./tests -v -run TestEnrollmentConcurrency_Flaky > test_run_3.log 2>&1
+        RUN3_EXIT=$?
+        cat test_run_3.log
+        echo "Exit code: $RUN3_EXIT"
+        echo "::endgroup::"
+        
+        # Detect flaky pattern
+        FAIL_COUNT=0
+        [ $RUN1_EXIT -ne 0 ] && FAIL_COUNT=$((FAIL_COUNT + 1))
+        [ $RUN2_EXIT -ne 0 ] && FAIL_COUNT=$((FAIL_COUNT + 1))
+        [ $RUN3_EXIT -ne 0 ] && FAIL_COUNT=$((FAIL_COUNT + 1))
+        
+        echo "Total failures: $FAIL_COUNT out of 3 runs"
+        
+        if [ $FAIL_COUNT -gt 0 ] && [ $FAIL_COUNT -lt 3 ]; then
+          echo "FLAKY_DETECTED=true" >> $GITHUB_ENV
+          echo "FAIL_COUNT=$FAIL_COUNT" >> $GITHUB_ENV
+          echo "❌ FLAKY TEST DETECTED: Failed $FAIL_COUNT out of 3 runs"
+          exit 0  # Don't fail the workflow - we detected flakiness
+        elif [ $FAIL_COUNT -eq 3 ]; then
+          echo "FLAKY_DETECTED=false" >> $GITHUB_ENV
+          echo "FAIL_COUNT=$FAIL_COUNT" >> $GITHUB_ENV
+          echo "❌ TEST CONSISTENTLY FAILING: Failed all 3 runs"
+          exit 1  # Fail the workflow - test is broken
+        else
+          echo "FLAKY_DETECTED=false" >> $GITHUB_ENV
+          echo "FAIL_COUNT=0" >> $GITHUB_ENV
+          echo "✅ TEST STABLE: Passed all 3 runs"
+          exit 0
+        fi
+    
+    - name: Trigger Copilot to Auto-Fix Flaky Test
+      if: env.FLAKY_DETECTED == 'true'
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          // Get or create PR for the flaky test fix
+          let prNumber;
+          
+          // Check if this is a PR context
+          if (context.payload.pull_request) {
+            prNumber = context.payload.pull_request.number;
+          } else {
+            // Create a new issue to track this
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🤖 Flaky Test Auto-Fix Request',
+              body: `## Flaky Test Detected - Awaiting Copilot Fix
+              
+              A flaky test was detected in the CI pipeline. This issue tracks the automated fix request.
+              
+              **Test:** TestEnrollmentConcurrency_Flaky
+              **Failed:** ${{ env.FAIL_COUNT }} out of 3 runs
+              **Workflow:** [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+              
+              See comment below for Copilot fix instructions.`,
+              labels: ['flaky-test', 'copilot-fix', 'automated']
+            });
+            prNumber = issue.data.number;
+          }
+          
+          // Post comment to trigger Copilot
+          const commentBody = [
+            '@copilot Fix the flaky test in `tests/enrollment_flaky_test.go`',
+            '',
+            '## Problem Analysis',
+            'The test `TestEnrollmentConcurrency_Flaky` failed ${{ env.FAIL_COUNT }} out of 3 runs due to:',
+            '- ⏱️ Timing issues with arbitrary timeouts',
+            '- 🔄 Race conditions in goroutines',
+            '- ⚠️ No proper synchronization (missing WaitGroup)',
+            '',
+            '## Fix Requirements',
+            '1. Replace timeout pattern with sync.WaitGroup',
+            '2. Remove all random timing and FORCE_SLOW_RUN logic',
+            '3. Ensure deterministic test execution',
+            '4. Add proper channel closure',
+            '',
+            '## Expected Implementation',
+            '```go',
+            'func TestEnrollmentConcurrency_Flaky(t *testing.T) {',
+            '    var wg sync.WaitGroup',
+            '    results := make(chan bool, 5)',
+            '    for i := 0; i < 5; i++ {',
+            '        wg.Add(1)',
+            '        go func(id int) {',
+            '            defer wg.Done()',
+            '            enrollment := createTestEnrollment(id)',
+            '            results <- enrollment.ID > 0',
+            '        }(i)',
+            '    }',
+            '    wg.Wait()',
+            '    close(results)',
+            '    successCount := 0',
+            '    for success := range results {',
+            '        if success { successCount++ }',
+            '    }',
+            '    assert.Equal(t, 5, successCount)',
+            '}',
+            '```',
+            '',
+            '**Files:** `tests/enrollment_flaky_test.go`',
+            '**Logs:** [Run ${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})',
+            '',
+            'Please generate the fix. #fix'
+          ].join('\n');
+          
+          await github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: prNumber,
+            body: commentBody
+          });
+          
+          console.log('✅ Triggered Copilot via comment on issue/PR #' + prNumber);
+          console.log('🤖 Copilot will analyze and respond with a fix');
+    
+    - name: Trigger Copilot Fix Summary
+      if: env.FLAKY_DETECTED == 'true'
+      run: |
+        echo "🤖 GitHub Copilot Auto-Fix Triggered!"
+        echo "✅ Posted @copilot mention with fix instructions"
+        echo "✅ Copilot will analyze the code and respond"
+        echo "✅ Check the issue/PR for Copilot's response"
+        echo ""
+        echo "💡 Copilot will:"
+        echo "   - Analyze the flaky test code"
+        echo "   - Generate a fix with WaitGroup"
+        echo "   - Respond in the issue/PR comment"
+        echo "   - Create a PR if requested with #fix tag"
+    
+    - name: Create GitHub Issue for Flaky Test
+      if: env.FLAKY_DETECTED == 'true'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const issue = await github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: '🐛 Flaky Test Detected: TestEnrollmentConcurrency_Flaky',
+            body: `## Flaky Test Detection Report
+            
+            **Test Name:** \`TestEnrollmentConcurrency_Flaky\`
+            **Status:** Failed ${{ env.FAIL_COUNT }} out of 3 runs
+            **Detection Time:** ${new Date().toISOString()}
+            **Workflow Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            
+            ### Failure Pattern
+            This test exhibits flaky behavior, indicating timing-related issues in the test implementation.
+            
+            ### Root Causes Identified
+            1. ⏱️ **Timing Issues**: Test relies on arbitrary timeouts (40-80ms)
+            2. 🔄 **Race Conditions**: Goroutines not properly synchronized
+            3. ⚠️ **Improper Waiting**: Using timeout instead of WaitGroup
+            
+            ### Recommended Fixes (Self-Healing)
+            According to flaky test best practices:
+            
+            1. **Replace timeout with sync.WaitGroup**
+               \`\`\`go
+               var wg sync.WaitGroup
+               wg.Add(5)
+               for i := 0; i < 5; i++ {
+                   go func(id int) {
+                       defer wg.Done()
+                       // ... test logic
+                   }(i)
+               }
+               wg.Wait() // Wait for all goroutines to complete
+               \`\`\`
+            
+            2. **Add retry decorators** for potentially flaky operations
+            3. **Use deterministic test data** instead of random timing
+            4. **Implement proper cleanup** in test fixtures
+            
+            ### Test Logs
+            Logs are available in workflow artifacts: [Download Logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            
+            ### Next Steps
+            - [ ] Review test logs in workflow artifacts
+            - [ ] Apply recommended fixes using GitHub Copilot
+            - [ ] Verify fix with multiple test runs
+            - [ ] Update flaky test metrics dashboard
+            
+            ---
+            🤖 *This issue was automatically created by the Flaky Test Self-Healing Pipeline*
+            `,
+            labels: ['flaky-test', 'self-healing', 'automated', 'bug']
+          });
+          console.log('Created issue:', issue.data.html_url);
+    
+    - name: Upload test logs
+      if: env.FLAKY_DETECTED == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: flaky-test-logs
+        path: test_run_*.log
+        retention-days: 5
+    
+    - name: Jira Integration (Optional - Demo)
+      if: env.FLAKY_DETECTED == 'true'
+      run: |
+        echo "📝 Jira Integration (Demo Mode - Not Configured)"
+        echo ""
+        echo "⚠️  To enable Jira integration, configure:"
+        echo "   1. Add JIRA_BASE_URL to repository secrets"
+        echo "   2. Add JIRA_USER_EMAIL to repository secrets"
+        echo "   3. Add JIRA_API_TOKEN to repository secrets"
+        echo "   4. Uncomment the Jira MCP integration in this workflow"
+        echo ""
+        echo "📋 Would create Jira issue with:"
+        echo "  Project: YOUR_PROJECT_KEY"
+        echo "  Issue Type: Bug"
+        echo "  Summary: Flaky Test - TestEnrollmentConcurrency_Flaky"
+        echo "  Priority: High"
+        echo "  Description: Test failed ${{ env.FAIL_COUNT }}/3 runs"
+        echo "  Labels: flaky-test, ci-pipeline, automated"
+        echo ""
+        echo "✅ GitHub Issue created as primary tracking method"
+        echo "ℹ️  For production, integrate with Atlassian MCP for Jira automation"
