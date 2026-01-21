@@ -1,65 +1,44 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 
-	"grademanagement-demo/cache"
 	"grademanagement-demo/handlers"
 	"grademanagement-demo/repository"
 
 	"github.com/gorilla/mux"
-	"github.com/redis/go-redis/v9"
 )
 
 func main() {
-	// Initialize Redis client
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "localhost:6379"
-	}
-
-	redisClient := redis.NewClient(&redis.Options{
-		Addr:     redisAddr,
-		Password: "", // no password set
-		DB:       0,  // use default DB
-	})
-
-	// Test Redis connection
-	ctx := context.Background()
-	if err := redisClient.Ping(ctx).Err(); err != nil {
-		log.Fatalf("❌ Failed to connect to Redis: %v", err)
-	}
-	fmt.Println("✅ Connected to Redis successfully")
-
 	r := mux.NewRouter()
 
-	// Initialize repository, cache, and handler
-	repo := repository.NewEnrollmentRepository()
-	enrollmentCache := cache.NewEnrollmentCache(redisClient)
-	handler := handlers.NewEnrollmentHandler(repo, enrollmentCache)
+	// Initialize repository
+	enrollmentRepo := repository.NewEnrollmentRepository()
 
-	// API routes with /api prefix
-	api := r.PathPrefix("/api").Subrouter()
-	api.HandleFunc("/enrollments", handler.CreateEnrollment).Methods("POST")
-	api.HandleFunc("/enrollments", handler.ListEnrollments).Methods("GET")
-	api.HandleFunc("/enrollments/{id}", handler.GetEnrollment).Methods("GET")
-	api.HandleFunc("/enrollments/{id}", handler.UpdateEnrollment).Methods("PUT")
-	api.HandleFunc("/enrollments/{id}", handler.DeleteEnrollment).Methods("DELETE")
+	// Initialize handlers
+	enrollmentHandler := handlers.NewEnrollmentHandler(enrollmentRepo)
+
+	// Setup routes
+	r.HandleFunc("/api/enrollments", enrollmentHandler.CreateEnrollment).Methods("POST")
+	r.HandleFunc("/api/enrollments", enrollmentHandler.GetAllEnrollments).Methods("GET")
+	r.HandleFunc("/api/enrollments/{id}", enrollmentHandler.GetEnrollment).Methods("GET")
+	r.HandleFunc("/api/enrollments/{id}", enrollmentHandler.UpdateEnrollment).Methods("PUT")
+	r.HandleFunc("/api/enrollments/{id}", enrollmentHandler.DeleteEnrollment).Methods("DELETE")
+	r.HandleFunc("/api/enrollments/student/{student_id}", enrollmentHandler.GetEnrollmentsByStudent).Methods("GET")
+	r.HandleFunc("/api/enrollments/course/{course_id}", enrollmentHandler.GetEnrollmentsByCourse).Methods("GET")
 
 	// Basic health check endpoint
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"message": "Grade Management API with Redis Caching", "status": "healthy"}`)
+		fmt.Fprintf(w, `{"message": "Grade Management API - Ready for AI delegation!", "status": "healthy"}`)
 	}).Methods("GET")
 
 	port := ":8080"
 	fmt.Printf("🚀 Grade Management API starting on port %s\n", port)
-	fmt.Println("📋 Enrollment API available at /api/enrollments")
-	fmt.Println("⚡ Redis caching enabled with 5-minute TTL")
+	fmt.Println("📋 Ready for Copilot Agent delegation!")
+	fmt.Println("🎓 Enrollment endpoints available at /api/enrollments")
 
 	log.Fatal(http.ListenAndServe(port, r))
 }

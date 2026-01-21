@@ -1,0 +1,150 @@
+name: Security Scan and CVE Detection
+
+on:
+  push:
+    branches: [ main, feature/*,test/* ]
+  pull_request:
+    branches: [ main , feature/*,test/* ]
+  schedule:
+    # Run security scan daily at 2 AM
+    - cron: '0 2 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.23'
+    
+    - name: Install dependencies
+      run: go mod download
+    
+    - name: Run govulncheck (Go Vulnerability Scanner)
+      id: vuln_scan
+      run: |
+        echo "Installing govulncheck..."
+        go install golang.org/x/vuln/cmd/govulncheck@latest
+        
+        echo "Scanning for vulnerabilities..."
+        govulncheck -show verbose ./... > vuln_report.txt 2>&1 || true
+        
+        cat vuln_report.txt
+        
+        # Check if any vulnerabilities were found (Package or Module Results)
+        if grep -qE "Vulnerability #[0-9]+:" vuln_report.txt; then
+          echo "VULNERABILITIES_FOUND=true" >> $GITHUB_ENV
+          echo "❌ VULNERABILITIES DETECTED"
+          
+          # Extract CVE details from all sections
+          echo "=== Vulnerability Summary ===" > cve_summary.txt
+          grep -E "Vulnerability #|Module:|Found in:|Fixed in:|More info:" vuln_report.txt >> cve_summary.txt || true
+          cat cve_summary.txt
+          
+          # Count vulnerabilities
+          VULN_COUNT=$(grep -c "Vulnerability #" vuln_report.txt || echo "0")
+          echo "Total vulnerabilities found: $VULN_COUNT"
+          echo "VULN_COUNT=$VULN_COUNT" >> $GITHUB_ENV
+        else
+          echo "VULNERABILITIES_FOUND=false" >> $GITHUB_ENV
+          echo "✅ No vulnerabilities detected"
+        fi
+    
+    - name: Upload vulnerability report
+      if: env.VULNERABILITIES_FOUND == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: vulnerability-report
+        path: |
+          vuln_report.txt
+          cve_summary.txt
+        retention-days: 30
+    
+    - name: Analyze CVE Impact with Nancy (Alternative Scanner)
+      if: env.VULNERABILITIES_FOUND == 'true'
+      run: |
+        echo "Running additional analysis..."
+        go list -json -deps ./... > go-deps.json
+        
+        echo "Dependencies analyzed. Ready for Copilot remediation."
+    
+    - name: Comment on PR if vulnerabilities found
+      if: env.VULNERABILITIES_FOUND == 'true' && github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const vulnReport = fs.readFileSync('vuln_report.txt', 'utf8');
+          
+          const comment = `## 🚨 Security Vulnerabilities Detected
+          
+          Automated security scan found vulnerabilities in dependencies.
+          
+          <details>
+          <summary>View Vulnerability Report</summary>
+          
+          \`\`\`
+          ${vulnReport.substring(0, 2000)}
+          \`\`\`
+          
+          </details>
+          
+          ### Next Steps
+          1. Review the [full vulnerability report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          2. Use GitHub Copilot to analyze impact and generate fix
+          3. Remediation PR will be created automatically
+          
+          **Command for Copilot:**
+          \`\`\`
+          @workspace Analyze security vulnerabilities and create remediation PR
+          \`\`\`
+          `;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+    
+    - name: Create Jira Issue for CVE Remediation
+      if: env.VULNERABILITIES_FOUND == 'true'
+      run: |
+        echo "🎫 Creating Jira issue for security remediation..."
+        echo "Issue: Security vulnerabilities detected in dependencies"
+        echo "Priority: High"
+        echo "Type: Security"
+        echo ""
+        echo "In production, this would use @atlassian MCP to auto-create issue"
+        echo "For demo: Manually create TEC-17 'CVE Remediation: golang.org/x/crypto'"
+    
+    - name: Fail workflow if critical vulnerabilities found
+      if: env.VULNERABILITIES_FOUND == 'true'
+      run: |
+        echo "❌ Workflow failed due to security vulnerabilities"
+        echo "Please remediate vulnerabilities before merging"
+        exit 1
+
+  dependency-review:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Dependency Review
+      uses: actions/dependency-review-action@v4
+      with:
+      
+        fail-on-severity: moderate

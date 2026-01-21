@@ -2,175 +2,172 @@ package handlers
 
 import (
 	"encoding/json"
-	"log"
-	"net/http"
-	"strconv"
-
-	"grademanagement-demo/cache"
 	"grademanagement-demo/models"
 	"grademanagement-demo/repository"
+	"net/http"
+	"time"
 
 	"github.com/gorilla/mux"
 )
 
-// ErrorResponse for consistent error handling
-type ErrorResponse struct {
-	Error string `json:"error"`
-}
-
-// SuccessResponse for consistent success responses
-type SuccessResponse struct {
-	Message string      `json:"message"`
-	Data    interface{} `json:"data,omitempty"`
-}
-
-// EnrollmentHandler handles HTTP requests for enrollments
+// EnrollmentHandler handles HTTP requests for enrollment operations
 type EnrollmentHandler struct {
-	repo  *repository.EnrollmentRepository
-	cache *cache.EnrollmentCache
+	repo *repository.EnrollmentRepository
 }
 
-// NewEnrollmentHandler creates a new handler instance
-func NewEnrollmentHandler(repo *repository.EnrollmentRepository, cache *cache.EnrollmentCache) *EnrollmentHandler {
+// NewEnrollmentHandler creates a new enrollment handler
+func NewEnrollmentHandler(repo *repository.EnrollmentRepository) *EnrollmentHandler {
 	return &EnrollmentHandler{
-		repo:  repo,
-		cache: cache,
+		repo: repo,
 	}
 }
 
-// CreateEnrollment handles POST /api/enrollments
+// CreateEnrollment handles POST requests to create a new enrollment
 func (h *EnrollmentHandler) CreateEnrollment(w http.ResponseWriter, r *http.Request) {
-	var input models.EnrollmentInput
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		respondError(w, "invalid request body", http.StatusBadRequest)
+	var req models.CreateEnrollmentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	enrollment, err := h.repo.Create(input)
-	if err != nil {
-		respondError(w, err.Error(), http.StatusBadRequest)
+	// Validate required fields
+	if req.StudentID == "" || req.CourseID == "" {
+		http.Error(w, "Missing required fields: student_id or course_id", http.StatusBadRequest)
 		return
 	}
 
-	// Cache the newly created enrollment
-	if err := h.cache.Set(enrollment); err != nil {
-		log.Printf("Failed to cache enrollment: %v", err)
+	// Validate status if provided
+	if req.Status != "" && !models.ValidateStatus(req.Status) {
+		http.Error(w, "Invalid status. Must be 'pending', 'active', or 'completed'", http.StatusBadRequest)
+		return
 	}
 
-	respondJSON(w, enrollment, http.StatusCreated)
+	// Default status to "pending" if not provided
+	status := req.Status
+	if status == "" {
+		status = "pending"
+	}
+
+	// Parse enrollment date or use current time
+	var enrollmentDate time.Time
+	if req.EnrollmentDate != "" {
+		parsed, err := time.Parse("2006-01-02", req.EnrollmentDate)
+		if err != nil {
+			http.Error(w, "Invalid enrollment_date format. Use YYYY-MM-DD", http.StatusBadRequest)
+			return
+		}
+		enrollmentDate = parsed
+	} else {
+		enrollmentDate = time.Now()
+	}
+
+	enrollment := &models.Enrollment{
+		StudentID:      req.StudentID,
+		CourseID:       req.CourseID,
+		EnrollmentDate: enrollmentDate,
+		Status:         status,
+	}
+
+	if err := h.repo.Create(enrollment); err != nil {
+		http.Error(w, "Failed to create enrollment", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(enrollment)
 }
 
-// GetEnrollment handles GET /api/enrollments/{id}
+// GetEnrollment handles GET requests to retrieve a specific enrollment
 func (h *EnrollmentHandler) GetEnrollment(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
+	id := vars["id"]
+
+	enrollment, err := h.repo.GetByID(id)
 	if err != nil {
-		respondError(w, "invalid enrollment ID", http.StatusBadRequest)
+		http.Error(w, "Enrollment not found", http.StatusNotFound)
 		return
 	}
 
-	// Try cache first
-	enrollment, err := h.cache.GetByID(id)
-	if err != nil {
-		log.Printf("Cache error: %v", err)
-	}
-
-	if enrollment != nil {
-		log.Printf("🎯 Cache HIT for enrollment ID %d", id)
-		w.Header().Set("X-Cache-Status", "HIT")
-		respondJSON(w, enrollment, http.StatusOK)
-		return
-	}
-
-	log.Printf("❌ Cache MISS for enrollment ID %d", id)
-
-	// Cache miss - fetch from repository
-	enrollment, err = h.repo.GetByID(id)
-	if err != nil {
-		respondError(w, err.Error(), http.StatusNotFound)
-		return
-	}
-
-	// Cache the result for future requests
-	if err := h.cache.Set(enrollment); err != nil {
-		log.Printf("Failed to cache enrollment: %v", err)
-	}
-
-	w.Header().Set("X-Cache-Status", "MISS")
-	respondJSON(w, enrollment, http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(enrollment)
 }
 
-// ListEnrollments handles GET /api/enrollments
-func (h *EnrollmentHandler) ListEnrollments(w http.ResponseWriter, r *http.Request) {
+// GetAllEnrollments handles GET requests to retrieve all enrollments
+func (h *EnrollmentHandler) GetAllEnrollments(w http.ResponseWriter, r *http.Request) {
 	enrollments := h.repo.GetAll()
-	w.Header().Set("X-Cache-Status", "SKIP")
-	respondJSON(w, enrollments, http.StatusOK)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(enrollments)
 }
 
-// UpdateEnrollment handles PUT /api/enrollments/{id}
+// UpdateEnrollment handles PUT requests to update an enrollment
 func (h *EnrollmentHandler) UpdateEnrollment(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
-	if err != nil {
-		respondError(w, "invalid enrollment ID", http.StatusBadRequest)
+	id := vars["id"]
+
+	var req models.UpdateEnrollmentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	var input models.EnrollmentInput
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		respondError(w, "invalid request body", http.StatusBadRequest)
+	// Validate status if provided
+	if req.Status != "" && !models.ValidateStatus(req.Status) {
+		http.Error(w, "Invalid status. Must be 'pending', 'active', or 'completed'", http.StatusBadRequest)
 		return
 	}
 
-	enrollment, err := h.repo.Update(id, input)
-	if err != nil {
-		if err.Error() == "enrollment not found" {
-			respondError(w, err.Error(), http.StatusNotFound)
-		} else {
-			respondError(w, err.Error(), http.StatusBadRequest)
-		}
+	enrollment := &models.Enrollment{
+		Status: req.Status,
+	}
+
+	if err := h.repo.Update(id, enrollment); err != nil {
+		http.Error(w, "Enrollment not found", http.StatusNotFound)
 		return
 	}
 
-	// Invalidate cache after update
-	if err := h.cache.Delete(id); err != nil {
-		log.Printf("Failed to invalidate cache: %v", err)
-	}
+	// Retrieve updated enrollment
+	updatedEnrollment, _ := h.repo.GetByID(id)
 
-	respondJSON(w, enrollment, http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(updatedEnrollment)
 }
 
-// DeleteEnrollment handles DELETE /api/enrollments/{id}
+// DeleteEnrollment handles DELETE requests to remove an enrollment
 func (h *EnrollmentHandler) DeleteEnrollment(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
-	if err != nil {
-		respondError(w, "invalid enrollment ID", http.StatusBadRequest)
-		return
-	}
+	id := vars["id"]
 
 	if err := h.repo.Delete(id); err != nil {
-		respondError(w, err.Error(), http.StatusNotFound)
+		http.Error(w, "Enrollment not found", http.StatusNotFound)
 		return
 	}
 
-	// Invalidate cache after delete
-	if err := h.cache.Delete(id); err != nil {
-		log.Printf("Failed to invalidate cache: %v", err)
-	}
-
-	respondJSON(w, SuccessResponse{Message: "enrollment deleted successfully"}, http.StatusOK)
-}
-
-// Helper functions for consistent JSON responses
-func respondJSON(w http.ResponseWriter, data interface{}, statusCode int) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	if err := json.NewEncoder(w).Encode(data); err != nil {
-		log.Printf("Error encoding JSON response: %v", err)
-	}
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "Enrollment deleted successfully",
+	})
 }
 
-func respondError(w http.ResponseWriter, message string, statusCode int) {
-	respondJSON(w, ErrorResponse{Error: message}, statusCode)
+// GetEnrollmentsByStudent handles GET requests to retrieve enrollments by student ID
+func (h *EnrollmentHandler) GetEnrollmentsByStudent(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	studentID := vars["student_id"]
+
+	enrollments := h.repo.GetByStudentID(studentID)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(enrollments)
+}
+
+// GetEnrollmentsByCourse handles GET requests to retrieve enrollments by course ID
+func (h *EnrollmentHandler) GetEnrollmentsByCourse(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	courseID := vars["course_id"]
+
+	enrollments := h.repo.GetByCourseID(courseID)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(enrollments)
 }
