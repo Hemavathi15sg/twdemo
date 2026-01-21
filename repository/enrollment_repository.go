@@ -2,6 +2,7 @@ package repository
 
 import (
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -10,7 +11,7 @@ import (
 
 // EnrollmentRepository manages enrollment data with thread safety
 type EnrollmentRepository struct {
-	enrollments map[int]*models.Enrollment
+	enrollments map[string]*models.Enrollment
 	nextID      int
 	mu          sync.RWMutex
 }
@@ -18,60 +19,46 @@ type EnrollmentRepository struct {
 // NewEnrollmentRepository creates a new repository instance
 func NewEnrollmentRepository() *EnrollmentRepository {
 	return &EnrollmentRepository{
-		enrollments: make(map[int]*models.Enrollment),
+		enrollments: make(map[string]*models.Enrollment),
 		nextID:      1,
 	}
 }
 
 // Create adds a new enrollment
-func (r *EnrollmentRepository) Create(input models.EnrollmentInput) (*models.Enrollment, error) {
+func (r *EnrollmentRepository) Create(enrollment *models.Enrollment) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	// Validate status
-	if !models.ValidateStatus(input.Status) {
-		return nil, fmt.Errorf("invalid status: must be one of pending, active, or completed")
+	if !models.ValidateStatus(enrollment.Status) {
+		return fmt.Errorf("invalid status: must be one of pending, active, or completed")
 	}
 
 	// Validate required fields
-	if input.StudentID <= 0 {
-		return nil, fmt.Errorf("student_id must be a positive integer")
+	if enrollment.StudentID == "" {
+		return fmt.Errorf("student_id is required")
 	}
-	if input.CourseID <= 0 {
-		return nil, fmt.Errorf("course_id must be a positive integer")
+	if enrollment.CourseID == "" {
+		return fmt.Errorf("course_id is required")
 	}
 
-	// Parse enrollment date or use current time
-	var enrollmentDate time.Time
-	var err error
-	if input.EnrollmentDate != "" {
-		enrollmentDate, err = time.Parse("2006-01-02", input.EnrollmentDate)
-		if err != nil {
-			return nil, fmt.Errorf("invalid enrollment_date format: use YYYY-MM-DD")
-		}
-	} else {
-		enrollmentDate = time.Now()
+	// Generate ID if not set
+	if enrollment.ID == "" {
+		enrollment.ID = strconv.Itoa(r.nextID)
+		r.nextID++
 	}
 
 	now := time.Now()
-	enrollment := &models.Enrollment{
-		ID:             r.nextID,
-		StudentID:      input.StudentID,
-		CourseID:       input.CourseID,
-		EnrollmentDate: enrollmentDate,
-		Status:         input.Status,
-		CreatedAt:      now,
-		UpdatedAt:      now,
-	}
+	enrollment.CreatedAt = now
+	enrollment.UpdatedAt = now
 
-	r.enrollments[r.nextID] = enrollment
-	r.nextID++
+	r.enrollments[enrollment.ID] = enrollment
 
-	return enrollment, nil
+	return nil
 }
 
 // GetByID retrieves an enrollment by ID
-func (r *EnrollmentRepository) GetByID(id int) (*models.Enrollment, error) {
+func (r *EnrollmentRepository) GetByID(id string) (*models.Enrollment, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -97,51 +84,38 @@ func (r *EnrollmentRepository) GetAll() []*models.Enrollment {
 }
 
 // Update modifies an existing enrollment
-func (r *EnrollmentRepository) Update(id int, input models.EnrollmentInput) (*models.Enrollment, error) {
+func (r *EnrollmentRepository) Update(id string, enrollment *models.Enrollment) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	enrollment, exists := r.enrollments[id]
+	existing, exists := r.enrollments[id]
 	if !exists {
-		return nil, fmt.Errorf("enrollment not found")
+		return fmt.Errorf("enrollment not found")
 	}
 
 	// Validate status if provided
-	if input.Status != "" && !models.ValidateStatus(input.Status) {
-		return nil, fmt.Errorf("invalid status: must be one of pending, active, or completed")
+	if enrollment.Status != "" && !models.ValidateStatus(enrollment.Status) {
+		return fmt.Errorf("invalid status: must be one of pending, active, or completed")
 	}
 
 	// Update fields if provided
-	if input.StudentID != 0 {
-		if input.StudentID <= 0 {
-			return nil, fmt.Errorf("student_id must be a positive integer")
-		}
-		enrollment.StudentID = input.StudentID
+	if enrollment.StudentID != "" {
+		existing.StudentID = enrollment.StudentID
 	}
-	if input.CourseID != 0 {
-		if input.CourseID <= 0 {
-			return nil, fmt.Errorf("course_id must be a positive integer")
-		}
-		enrollment.CourseID = input.CourseID
+	if enrollment.CourseID != "" {
+		existing.CourseID = enrollment.CourseID
 	}
-	if input.EnrollmentDate != "" {
-		enrollmentDate, err := time.Parse("2006-01-02", input.EnrollmentDate)
-		if err != nil {
-			return nil, fmt.Errorf("invalid enrollment_date format: use YYYY-MM-DD")
-		}
-		enrollment.EnrollmentDate = enrollmentDate
-	}
-	if input.Status != "" {
-		enrollment.Status = input.Status
+	if enrollment.Status != "" {
+		existing.Status = enrollment.Status
 	}
 
-	enrollment.UpdatedAt = time.Now()
+	existing.UpdatedAt = time.Now()
 
-	return enrollment, nil
+	return nil
 }
 
 // Delete removes an enrollment
-func (r *EnrollmentRepository) Delete(id int) error {
+func (r *EnrollmentRepository) Delete(id string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -151,4 +125,34 @@ func (r *EnrollmentRepository) Delete(id int) error {
 
 	delete(r.enrollments, id)
 	return nil
+}
+
+// GetByStudentID retrieves all enrollments for a specific student
+func (r *EnrollmentRepository) GetByStudentID(studentID string) []*models.Enrollment {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var enrollments []*models.Enrollment
+	for _, enrollment := range r.enrollments {
+		if enrollment.StudentID == studentID {
+			enrollments = append(enrollments, enrollment)
+		}
+	}
+
+	return enrollments
+}
+
+// GetByCourseID retrieves all enrollments for a specific course
+func (r *EnrollmentRepository) GetByCourseID(courseID string) []*models.Enrollment {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var enrollments []*models.Enrollment
+	for _, enrollment := range r.enrollments {
+		if enrollment.CourseID == courseID {
+			enrollments = append(enrollments, enrollment)
+		}
+	}
+
+	return enrollments
 }

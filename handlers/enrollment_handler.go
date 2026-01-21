@@ -3,7 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"grademanagement-demo/models"
-	"grademanagement-demo/repos"
+	"grademanagement-demo/repository"
 	"net/http"
 	"time"
 
@@ -12,11 +12,11 @@ import (
 
 // EnrollmentHandler handles HTTP requests for enrollment operations
 type EnrollmentHandler struct {
-	repo repos.EnrollmentRepository
+	repo *repository.EnrollmentRepository
 }
 
 // NewEnrollmentHandler creates a new enrollment handler
-func NewEnrollmentHandler(repo repos.EnrollmentRepository) *EnrollmentHandler {
+func NewEnrollmentHandler(repo *repository.EnrollmentRepository) *EnrollmentHandler {
 	return &EnrollmentHandler{
 		repo: repo,
 	}
@@ -95,11 +95,7 @@ func (h *EnrollmentHandler) GetEnrollment(w http.ResponseWriter, r *http.Request
 
 // GetAllEnrollments handles GET requests to retrieve all enrollments
 func (h *EnrollmentHandler) GetAllEnrollments(w http.ResponseWriter, r *http.Request) {
-	enrollments, err := h.repo.GetAll()
-	if err != nil {
-		http.Error(w, "Failed to retrieve enrollments", http.StatusInternalServerError)
-		return
-	}
+	enrollments := h.repo.GetAll()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(enrollments)
@@ -159,11 +155,7 @@ func (h *EnrollmentHandler) GetEnrollmentsByStudent(w http.ResponseWriter, r *ht
 	vars := mux.Vars(r)
 	studentID := vars["student_id"]
 
-	enrollments, err := h.repo.GetByStudentID(studentID)
-	if err != nil {
-		http.Error(w, "Failed to retrieve enrollments", http.StatusInternalServerError)
-		return
-	}
+	enrollments := h.repo.GetByStudentID(studentID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(enrollments)
@@ -174,11 +166,7 @@ func (h *EnrollmentHandler) GetEnrollmentsByCourse(w http.ResponseWriter, r *htt
 	vars := mux.Vars(r)
 	courseID := vars["course_id"]
 
-	enrollments, err := h.repo.GetByCourseID(courseID)
-	if err != nil {
-		http.Error(w, "Failed to retrieve enrollments", http.StatusInternalServerError)
-		return
-	}
+	enrollments := h.repo.GetByCourseID(courseID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(enrollments)

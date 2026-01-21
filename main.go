@@ -5,30 +5,29 @@ import (
 	"log"
 	"net/http"
 
-	"grademanagement-demo/repos"
-	"grademanagement-demo/routes"
+	"grademanagement-demo/handlers"
+	"grademanagement-demo/repository"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/gorilla/mux"
 )
 
 func main() {
 	r := mux.NewRouter()
 
-	// Initialize Redis client
-	redisClient := redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
-		Password: "", // no password set
-		DB:       0,  // use default DB
-	})
+	// Initialize repository
+	enrollmentRepo := repository.NewEnrollmentRepository()
 
-	// Initialize repositories
-	gradeRepo := repos.NewInMemoryGradeRepository()
-	enrollmentRepo := repos.NewInMemoryEnrollmentRepository(redisClient)
+	// Initialize handlers
+	enrollmentHandler := handlers.NewEnrollmentHandler(enrollmentRepo)
 
 	// Setup routes
-	routes.SetupGradeRoutes(r, gradeRepo)
-	routes.SetupEnrollmentRoutes(r, enrollmentRepo)
+	r.HandleFunc("/api/enrollments", enrollmentHandler.CreateEnrollment).Methods("POST")
+	r.HandleFunc("/api/enrollments", enrollmentHandler.GetAllEnrollments).Methods("GET")
+	r.HandleFunc("/api/enrollments/{id}", enrollmentHandler.GetEnrollment).Methods("GET")
+	r.HandleFunc("/api/enrollments/{id}", enrollmentHandler.UpdateEnrollment).Methods("PUT")
+	r.HandleFunc("/api/enrollments/{id}", enrollmentHandler.DeleteEnrollment).Methods("DELETE")
+	r.HandleFunc("/api/enrollments/student/{student_id}", enrollmentHandler.GetEnrollmentsByStudent).Methods("GET")
+	r.HandleFunc("/api/enrollments/course/{course_id}", enrollmentHandler.GetEnrollmentsByCourse).Methods("GET")
 
 	// Basic health check endpoint
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -39,8 +38,7 @@ func main() {
 	port := ":8080"
 	fmt.Printf("🚀 Grade Management API starting on port %s\n", port)
 	fmt.Println("📋 Ready for Copilot Agent delegation!")
-	fmt.Println("📚 Grade Management endpoints available at /api/grades")
-	fmt.Println("🎓 Enrollment endpoints available at /api/enrollments (with Redis caching)")
+	fmt.Println("🎓 Enrollment endpoints available at /api/enrollments")
 
 	log.Fatal(http.ListenAndServe(port, r))
 }
