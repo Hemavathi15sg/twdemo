@@ -37,18 +37,30 @@ func main() {
 
 	r := mux.NewRouter()
 
-	// Initialize repository, cache, and handler
-	repo := repository.NewEnrollmentRepository()
+	// Initialize repositories, caches, and handlers
+	enrollmentRepo := repository.NewEnrollmentRepository()
 	enrollmentCache := cache.NewEnrollmentCache(redisClient)
-	handler := handlers.NewEnrollmentHandler(repo, enrollmentCache)
+	enrollmentHandler := handlers.NewEnrollmentHandler(enrollmentRepo, enrollmentCache)
+
+	gradeRepo := repository.NewGradeRepository()
+	gradeCache := cache.NewGradeCache(redisClient)
+	gradeHandler := handlers.NewGradeHandler(gradeRepo, gradeCache)
 
 	// API routes with /api prefix
 	api := r.PathPrefix("/api").Subrouter()
-	api.HandleFunc("/enrollments", handler.CreateEnrollment).Methods("POST")
-	api.HandleFunc("/enrollments", handler.ListEnrollments).Methods("GET")
-	api.HandleFunc("/enrollments/{id}", handler.GetEnrollment).Methods("GET")
-	api.HandleFunc("/enrollments/{id}", handler.UpdateEnrollment).Methods("PUT")
-	api.HandleFunc("/enrollments/{id}", handler.DeleteEnrollment).Methods("DELETE")
+	
+	// Enrollment endpoints
+	api.HandleFunc("/enrollments", enrollmentHandler.CreateEnrollment).Methods("POST")
+	api.HandleFunc("/enrollments", enrollmentHandler.ListEnrollments).Methods("GET")
+	api.HandleFunc("/enrollments/{id}", enrollmentHandler.GetEnrollment).Methods("GET")
+	api.HandleFunc("/enrollments/{id}", enrollmentHandler.UpdateEnrollment).Methods("PUT")
+	api.HandleFunc("/enrollments/{id}", enrollmentHandler.DeleteEnrollment).Methods("DELETE")
+
+	// Grade calculation endpoints - TEC-31
+	api.HandleFunc("/grades/calculate", gradeHandler.CalculateGrade).Methods("POST")
+	api.HandleFunc("/grades", gradeHandler.GetAllGrades).Methods("GET")
+	api.HandleFunc("/grades/{id}", gradeHandler.GetGrade).Methods("GET")
+	api.HandleFunc("/grades/student/{studentId}/course/{courseId}", gradeHandler.GetGradeByStudentAndCourse).Methods("GET")
 
 	// Basic health check endpoint
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -59,7 +71,14 @@ func main() {
 	port := ":8080"
 	fmt.Printf("🚀 Grade Management API starting on port %s\n", port)
 	fmt.Println("📋 Enrollment API available at /api/enrollments")
+	fmt.Println("🎓 Grade Calculation API available at /api/grades/calculate")
+	fmt.Println("   - POST /api/grades/calculate (TEC-31)")
+	fmt.Println("   - GET  /api/grades")
+	fmt.Println("   - GET  /api/grades/{id}")
+	fmt.Println("   - GET  /api/grades/student/{studentId}/course/{courseId}")
 	fmt.Println("⚡ Redis caching enabled with 5-minute TTL")
+	fmt.Println("🎨 Figma design tokens enforced for grade display")
+	fmt.Println("⏱️  Performance target: <200ms per request")
 
 	log.Fatal(http.ListenAndServe(port, r))
 }
