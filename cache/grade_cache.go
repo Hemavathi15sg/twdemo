@@ -8,7 +8,7 @@ import (
 
 	"grademanagement-demo/models"
 
-	"github.com/go-redis/redis/v9"
+	"github.com/redis/go-redis/v9"
 )
 
 // GradeCache handles Redis caching for grades

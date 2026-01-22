@@ -12,6 +12,7 @@ import (
 	"grademanagement-demo/repository"
 
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -62,6 +63,9 @@ func main() {
 	api.HandleFunc("/grades/{id}", gradeHandler.GetGrade).Methods("GET")
 	api.HandleFunc("/grades/student/{studentId}/course/{courseId}", gradeHandler.GetGradeByStudentAndCourse).Methods("GET")
 
+	// Prometheus metrics endpoint
+	r.Handle("/metrics", promhttp.Handler())
+
 	// Basic health check endpoint
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -75,7 +79,9 @@ func main() {
 	fmt.Println("   - POST /api/grades/calculate (TEC-31)")
 	fmt.Println("   - GET  /api/grades")
 	fmt.Println("   - GET  /api/grades/{id}")
-	fmt.Println("   - GET  /api/grades/student/{studentId}/course/{courseId}")
+	fmt.Println("   - GET  /api/grades/student/{studentId}/co
+	fmt.Println("📊 Prometheus metrics available at /metrics")
+	fmt.Println("📈 Grafana dashboards: http://localhost:3000")urse/{courseId}")
 	fmt.Println("⚡ Redis caching enabled with 5-minute TTL")
 	fmt.Println("🎨 Figma design tokens enforced for grade display")
 	fmt.Println("⏱️  Performance target: <200ms per request")

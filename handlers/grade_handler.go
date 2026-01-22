@@ -10,6 +10,7 @@ import (
 	"grademanagement-demo/cache"
 	"grademanagement-demo/models"
 	"grademanagement-demo/repository"
+	"grademanagement-demo/telemetry"
 
 	"github.com/gorilla/mux"
 )
@@ -94,6 +95,11 @@ func (h *GradeHandler) CalculateGrade(w http.ResponseWriter, r *http.Request) {
 	responseTime := time.Since(startTime)
 	w.Header().Set("X-Response-Time", responseTime.String())
 
+	// Record Prometheus metrics
+	statusCode := strconv.Itoa(http.StatusCreated)
+	telemetry.RecordHTTPRequest("/api/grades/calculate", r.Method, statusCode, responseTime)
+	telemetry.RecordGradeCalculation(savedGrade.LetterGrade, savedGrade.GradeColor, savedGrade.GradeStatus, savedGrade.CurveApplied)
+
 	// Log performance
 	if responseTime.Milliseconds() > 200 {
 		log.Printf("⚠️  Performance warning: Grade calculation took %v (target: <200ms)", responseTime)
@@ -117,13 +123,15 @@ func (h *GradeHandler) GetGrade(w http.ResponseWriter, r *http.Request) {
 	grade, err := h.cache.GetByID(id)
 	if err != nil {
 		log.Printf("Cache error: %v", err)
-	}
-
-	if grade != nil {
-		log.Printf("🎯 Cache HIT for grade ID %d", id)
-		w.Header().Set("X-Cache-Status", "HIT")
+	}telemetry.RecordCacheHit()
 		respondJSON(w, grade, http.StatusOK)
 		return
+	}
+
+	// Cache miss - query repository
+	log.Printf("🔍 Cache MISS for grade ID %d", id)
+	w.Header().Set("X-Cache-Status", "MISS")
+	telemetry.RecordCacheMiss(
 	}
 
 	// Cache miss - query repository
@@ -166,13 +174,15 @@ func (h *GradeHandler) GetGradeByStudentAndCourse(w http.ResponseWriter, r *http
 	}
 
 	if grade != nil {
-		log.Printf("🎯 Cache HIT for student %d, course %d", studentID, courseID)
-		w.Header().Set("X-Cache-Status", "HIT")
+		telemetry.RecordCacheHit()
 		respondJSON(w, grade, http.StatusOK)
 		return
 	}
 
 	// Cache miss - query repository
+	log.Printf("🔍 Cache MISS for student %d, course %d", studentID, courseID)
+	w.Header().Set("X-Cache-Status", "MISS")
+	telemetry.RecordCacheMiss(
 	log.Printf("🔍 Cache MISS for student %d, course %d", studentID, courseID)
 	w.Header().Set("X-Cache-Status", "MISS")
 
