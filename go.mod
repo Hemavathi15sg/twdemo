@@ -1,15 +1,15 @@
 module grademanagement-demo
 
-go 1.23
+go 1.24.0
 
-toolchain go1.23.4
+toolchain go1.24.12
 
 require (
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/getkin/kin-openapi v0.133.0
 	github.com/gorilla/mux v1.8.1
 	github.com/redis/go-redis/v9 v9.17.2
-	golang.org/x/crypto v0.14.0 // VULNERABLE: CVE-2023-48795 (Terrapin Attack)
+	golang.org/x/crypto v0.47.0 // Fixed version (was v0.14.0)
 )
 
 require (
@@ -25,6 +25,6 @@ require (
 	github.com/perimeterx/marshmallow v1.1.5 // indirect
 	github.com/woodsbury/decimal128 v1.3.0 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
-	golang.org/x/sys v0.13.0 // indirect
+	golang.org/x/sys v0.40.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
